@@ -314,6 +314,7 @@ export class Game {
 
     // 白ウサギの登場シーン（操作キャラだと分かるように毎ステージ再生）
     this.state = 'busy';
+    this.sfx.warp();
     this.scene.playEntrance().then(() => {
       this.state = 'playing';
       this._updateReachable();
@@ -403,7 +404,7 @@ export class Game {
     // 次ステージを先にセーブ（途中で閉じても続きから遊べる）
     this._save(this.stage + 1);
     // 喜び→見つめ合いの演出が見えてからダイアログを出す
-    setTimeout(() => this._show('modal-clear'), 1700);
+    setTimeout(() => this._show('modal-clear'), 1900);
   }
 
   // ---------- アイテム ----------

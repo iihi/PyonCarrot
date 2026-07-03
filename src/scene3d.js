@@ -74,6 +74,7 @@ export class GameScene {
     this.time = 0;
     this.eatStart = -1; // 着地後の「食べる」演出の開始時刻(-1=なし)
     this.jumpPose = 0; // 飛行中の手足ポーズ(0=通常, 1=ぴょーん)
+    this._fx = new Set(); // キラキラ等の一時エフェクト
     this.numbersVisible = false;
     this.camTarget = new THREE.Vector3();
     this.camPos = new THREE.Vector3(8, 12, 8);
@@ -112,6 +113,8 @@ export class GameScene {
     this.clearRings();
     this.clearHint();
     this.tweens = [];
+    // 前ステージの残エフェクトを掃除（tween中断でdoneが呼ばれないため）
+    for (const m of [...this._fx]) this._removeFx(m);
     this.tileMeshes = [];
 
     level.tiles.forEach((t, i) => {
@@ -159,55 +162,83 @@ export class GameScene {
     this._buildMinis(level);
   }
 
-  // 白ウサギの登場シーン: 画面手前から2ホップでスタートマスへ入り、カメラの方を向く
+  // キラキラの粒子を弾けさせる
+  _sparkleBurst(pos, n = 14) {
+    const colors = [0xfff59e, 0xffffff, 0xffd24a, 0xaee9ff];
+    for (let i = 0; i < n; i++) {
+      const m = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.05 + Math.random() * 0.05, 0),
+        new THREE.MeshBasicMaterial({
+          color: colors[i % colors.length],
+          transparent: true,
+        })
+      );
+      m.position.copy(pos);
+      this.scene.add(m);
+      this._fx.add(m);
+      const ang = (i / n) * Math.PI * 2 + Math.random() * 0.5;
+      const vx = Math.cos(ang) * (0.7 + Math.random() * 0.7);
+      const vz = Math.sin(ang) * (0.7 + Math.random() * 0.7);
+      const vy = 1.4 + Math.random() * 1.2;
+      this.tween(0.55 + Math.random() * 0.25, Math.random() * 0.1, (t) => t, (k) => {
+        m.position.set(pos.x + vx * k, pos.y + vy * k - 2.4 * k * k, pos.z + vz * k);
+        m.rotation.x += 0.2;
+        m.rotation.y += 0.27;
+        m.material.opacity = 1 - k;
+        m.scale.setScalar(1 - 0.6 * k);
+      }, () => this._removeFx(m));
+    }
+  }
+
+  _removeFx(m) {
+    this.scene.remove(m);
+    m.geometry.dispose();
+    m.material.dispose();
+    this._fx.delete(m);
+  }
+
+  // 白ウサギの登場シーン: キラキラと光のリングの中に上からワープイン
   playEntrance() {
     return new Promise((resolve) => {
       const start = this.level.tiles[0];
       const goalP = this.worldPos(start.x, start.y, 0.22);
-      const fwd = { x: Math.SQRT1_2, z: Math.SQRT1_2 }; // 画面の手前方向
-
-      const pts = [2.3, 1.1, 0].map((d, i) => {
-        const p = new THREE.Vector3(
-          goalP.x + fwd.x * d,
-          d > 0 ? 0.06 : 0.22, // 途中は草の上、最後はマスの上
-          goalP.z + fwd.z * d
-        );
-        return p;
-      });
-
       this.killTweens('rabbit');
-      this.rabbit.visible = true;
-      this.rabbit.position.copy(pts[0]);
-      this.rabbit.rotation.y = Math.atan2(-fwd.x, -fwd.z); // 進行方向(奥)を向く
 
-      let delay = 0.15;
-      for (let i = 0; i < 2; i++) {
-        const a = pts[i];
-        const b = pts[i + 1];
-        this.tween(0.34, delay, (t) => t, (k) => {
-          this.rabbit.position.lerpVectors(a, b, k);
-          this.rabbit.position.y = a.y + (b.y - a.y) * k + 0.8 * 4 * k * (1 - k);
-          const sy = 1 + 0.3 * Math.sin(k * Math.PI);
-          this.rabbit.scale.set(1 / Math.sqrt(sy), sy, 1 / Math.sqrt(sy));
-          this._applyJumpPose(Math.sin(k * Math.PI));
-        }, null, 'rabbit');
-        delay += 0.42;
-      }
+      // キラキラ＆広がる光のリング
+      this._sparkleBurst(this.worldPos(start.x, start.y, 0.4));
+      const ring = makeRing(0xfff59e);
+      ring.position.copy(this.worldPos(start.x, start.y, 0.26));
+      this.scene.add(ring);
+      this._fx.add(ring);
+      this.tween(0.65, 0, easeOut, (k) => {
+        ring.scale.setScalar(0.4 + k * 1.8);
+        ring.material.opacity = 0.95 * (1 - k);
+      }, () => this._removeFx(ring));
 
-      // 着地後、くるっとカメラの方へ向き直ってぴょこんと決めポーズ
-      const turnFrom = Math.atan2(-fwd.x, -fwd.z);
-      const turnTo = Math.PI / 4;
-      this.tween(0.32, delay, easeOut, (k) => {
-        this._applyJumpPose(0);
-        this.rabbit.rotation.y =
-          turnFrom + Math.atan2(Math.sin(turnTo - turnFrom), Math.cos(turnTo - turnFrom)) * k;
-        this.rabbit.position.y = 0.22 + 0.35 * 4 * k * (1 - k);
-        const sy = 1 + 0.15 * Math.sin(k * Math.PI);
+      // ウサギが拡大しながら上から降りてくる
+      this.rabbit.rotation.set(0, Math.PI / 4, 0);
+      this.rabbit.scale.setScalar(0.01);
+      this.rabbit.position.set(goalP.x, goalP.y + 1.5, goalP.z);
+      this.tween(0.5, 0.1, (t) => t, (k) => {
+        this.rabbit.visible = true;
+        const grow = Math.min(1, k * 1.5);
+        this.rabbit.scale.set(grow * 0.95, grow * (1 + 0.25 * (1 - k)), grow * 0.95);
+        this.rabbit.position.y = goalP.y + 1.5 * (1 - k * k); // 加速しながら落下
+      }, null, 'rabbit');
+
+      // 着地スクワッシュ→ぴょこんと決めポーズ
+      this.tween(0.18, 0.6, easeOut, (k) => {
+        const sy = 0.7 + 0.3 * k;
+        this.rabbit.scale.set(1 + 0.2 * (1 - k), sy, 1 + 0.2 * (1 - k));
+        this.rabbit.position.y = goalP.y;
+      }, null, 'rabbit');
+      this.tween(0.3, 0.8, (t) => t, (k) => {
+        this.rabbit.position.y = goalP.y + 0.3 * 4 * k * (1 - k);
+        const sy = 1 + 0.12 * Math.sin(k * Math.PI);
         this.rabbit.scale.set(1 / Math.sqrt(sy), sy, 1 / Math.sqrt(sy));
       }, () => {
         this.rabbit.scale.setScalar(1);
         this.rabbit.position.copy(goalP);
-        this.rabbit.rotation.y = turnTo;
         resolve();
       }, 'rabbit');
     });
@@ -424,16 +455,16 @@ export class GameScene {
         this.rabbit.scale.set(1 + 0.12 * k, sy, 1 + 0.12 * k);
       }, null, 'rabbit');
 
-      // 2) 飛行：高い弧を描き、空中で伸びて前傾→着地に向けて起こす
+      // 2) 飛行：高い弧を描き、進行方向へ体が伸びる（前後に長く・上下に薄く）
       this.tween(flightDur, crouchDur, (t) => t, (k) => {
         this.rabbit.position.lerpVectors(p0, p1, k);
         this.rabbit.position.y = 0.22 + height * 4 * k * (1 - k);
-        const sy = 1 + 0.4 * Math.sin(k * Math.PI);
-        this.rabbit.scale.set(1 / Math.sqrt(sy), sy, 1 / Math.sqrt(sy));
-        // 上昇中はのけぞり、下降中は前傾
-        this.rabbit.rotation.x = 0.5 * Math.sin(k * Math.PI) * (k - 0.5);
+        const e = Math.sin(k * Math.PI);
+        this.rabbit.scale.set(1 - 0.12 * e, 1 - 0.18 * e, 1 + 0.45 * e);
+        // 上昇中はのけぞり、下降中は前傾（軌道に体を沿わせる）
+        this.rabbit.rotation.x = 0.85 * e * (k - 0.5);
         // 手足を伸ばして「ぴょーん」
-        this._applyJumpPose(Math.sin(k * Math.PI));
+        this._applyJumpPose(e);
       }, () => {
         this.rabbit.position.copy(p1);
         this.rabbit.rotation.x = 0;
@@ -537,44 +568,53 @@ export class GameScene {
 
   celebrate() {
     this.goalCollected = true;
-    // ピンクウサギも一緒に喜んで跳ねる（短め: 2回）
     const bunny = this.goalMesh && this.goalMesh.userData.bunny;
-    if (bunny) {
-      const baseY = bunny.position.y; // よけた先の地面の高さを基準に
-      for (let i = 0; i < 2; i++) {
-        this.tween(0.4, 0.05 + i * 0.42, (t) => t, (k) => {
-          bunny.position.y = baseY + 0.6 * 4 * k * (1 - k);
-          bunny.rotation.z = 0.15 * Math.sin(k * Math.PI * 2);
-        }, () => {
-          bunny.rotation.z = 0;
-        }, 'goal');
-      }
-    }
-    // プレイヤーのウサギが喜んで跳ねる（短め: 2回・回転ひかえめ）
+    const rb = this.rabbit;
+    const shortest = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+
+    // 1) 2匹そろってカメラの方を向く
+    const camY = Math.PI / 4;
+    const r0 = rb.rotation.y;
+    const b0 = bunny ? bunny.rotation.y : 0;
+    this.tween(0.22, 0.05, easeOut, (k) => {
+      rb.rotation.y = r0 + shortest(camY - r0) * k;
+      if (bunny) bunny.rotation.y = b0 + shortest(camY - b0) * k;
+    }, null, 'rabbit');
+
+    // 2) 同じタイミングで一緒にジャンプ×2（左右に揺れながら）
+    const baseB = bunny ? bunny.position.y : 0;
     for (let i = 0; i < 2; i++) {
-      this.tween(0.4, 0.2 + i * 0.42, (t) => t, (k) => {
-        this.rabbit.position.y = 0.22 + 0.9 * 4 * k * (1 - k);
-        this.rabbit.rotation.y += 0.09;
-      }, null, 'rabbit');
+      this.tween(0.42, 0.3 + i * 0.5, (t) => t, (k) => {
+        const arc = 4 * k * (1 - k);
+        const tilt = 0.13 * Math.sin(k * Math.PI * 2);
+        rb.position.y = 0.22 + 0.85 * arc;
+        rb.rotation.z = tilt;
+        if (bunny) {
+          bunny.position.y = baseB + 0.6 * arc;
+          bunny.rotation.z = tilt;
+        }
+      }, () => {
+        rb.rotation.z = 0;
+        if (bunny) bunny.rotation.z = 0;
+      }, 'rabbit');
     }
 
-    // 喜んだあと、2匹が向き合って見つめ合う
+    // 3) 喜んだあと、2匹が向き合って見つめ合う
     if (bunny) {
-      const shortest = (a) => Math.atan2(Math.sin(a), Math.cos(a));
       let s0 = null;
-      this.tween(0.45, 1.1, easeInOut, (k) => {
+      this.tween(0.4, 1.4, easeInOut, (k) => {
         if (!s0) {
-          const rp = this.rabbit.position;
+          const rp = rb.position;
           const bp = new THREE.Vector3();
           bunny.getWorldPosition(bp);
           s0 = {
-            r0: this.rabbit.rotation.y,
+            r0: rb.rotation.y,
             b0: bunny.rotation.y,
             rT: Math.atan2(bp.x - rp.x, bp.z - rp.z),
             bT: Math.atan2(rp.x - bp.x, rp.z - bp.z),
           };
         }
-        this.rabbit.rotation.y = s0.r0 + shortest(s0.rT - s0.r0) * k;
+        rb.rotation.y = s0.r0 + shortest(s0.rT - s0.r0) * k;
         bunny.rotation.y = s0.b0 + shortest(s0.bT - s0.b0) * k;
       }, null, 'gaze');
     }

@@ -79,6 +79,12 @@ export class Sfx {
     this._tone(520, 0.08, { type: 'sine', vol: 0.1 });
     this._tone(780, 0.1, { type: 'sine', vol: 0.1, delay: 0.07 });
   }
+  warp() {
+    const notes = [523, 784, 1047, 1568];
+    notes.forEach((f, i) =>
+      this._tone(f, 0.14, { type: 'sine', vol: 0.09, delay: i * 0.05, slide: 80 })
+    );
+  }
   clear() {
     const notes = [523, 659, 784, 1047];
     notes.forEach((f, i) =>
