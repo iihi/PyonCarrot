@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>ぴょんぴょんキャロット</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <div id="game-wrap">
+    <canvas id="c"></canvas>
+
+    <!-- HUD -->
+    <div id="hud" class="hidden">
+      <div id="hud-top">
+        <div class="hud-chip">STAGE <b id="hud-stage">1</b></div>
+        <div class="hud-chip hud-count">🥕 <b id="hud-count">4</b></div>
+      </div>
+      <div id="hud-bottom">
+        <button id="btn-rewind" class="hud-btn item-btn">
+          <span class="icon">★</span>まきもどし<span class="badge" id="cnt-rewind">1</span>
+        </button>
+        <button id="btn-hint" class="hud-btn item-btn">
+          <span class="icon">💡</span>ヒント<span class="badge" id="cnt-hint">1</span>
+        </button>
+        <button id="btn-retry" class="hud-btn">リトライ</button>
+        <div class="hud-mini-row">
+          <button id="btn-share" class="hud-btn mini wide" title="ステージコードを共有">📤 コード</button>
+          <button id="btn-sound" class="hud-btn mini on" title="サウンド">♪</button>
+          <button id="btn-help-hud" class="hud-btn mini" title="あそびかた">?</button>
+          <button id="btn-home" class="hud-btn mini" title="タイトルへ">⌂</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- タイトル -->
+    <div id="screen-title" class="screen">
+      <div class="logo">
+        <div class="logo-hop">ぴょんぴょん</div>
+        <div class="logo-carrot">キャロット</div>
+        <div class="logo-sub">🐰 うさぎのにんじん畑パズル 🥕</div>
+      </div>
+      <div class="title-buttons">
+        <button id="btn-start" class="big-btn primary">はじめから</button>
+        <button id="btn-continue" class="big-btn">つづきから / コード入力</button>
+        <button id="btn-help" class="big-btn sub">あそびかた</button>
+      </div>
+    </div>
+
+    <!-- コンティニュー -->
+    <div id="modal-continue" class="modal hidden">
+      <div class="modal-box">
+        <h2>つづきから</h2>
+        <button id="btn-resume" class="big-btn primary hidden-if" >前回のつづきから</button>
+        <div id="resume-info" class="hidden"></div>
+        <p class="modal-text">ステージコードを入力してもOK</p>
+        <div class="code-row">
+          <input id="code-input" type="text" inputmode="numeric" placeholder="例: 1234-5" />
+          <button id="btn-code-go" class="big-btn primary slim">GO</button>
+        </div>
+        <button id="btn-paste" class="big-btn slim self-center">📋 ペースト</button>
+        <button id="continue-close" class="big-btn sub">とじる</button>
+      </div>
+    </div>
+
+    <!-- あそびかた -->
+    <div id="modal-help" class="modal hidden">
+      <div class="modal-box">
+        <h2>あそびかた</h2>
+        <ul class="help-list">
+          <li>🐰 ウサギは、いま乗っている畑の<b>ニンジンの本数（1〜3）</b>だけ、タテかヨコにジャンプします。</li>
+          <li>✨ 光っているマスへタップ（PCは矢印キー）で移動。</li>
+          <li>🕳️ 飛び立った畑は消えます。<b>すべての畑を通ってから</b>、お花の台座で待つ<b>ピンクのウサギ</b>のところへ！</li>
+          <li>🥕 カウントは残りジャンプ回数。うごけなくなったらゲームオーバー。</li>
+          <li><span class="item-ic ic-star"></span> <b>金の星</b> ＝ まきもどし +1（1手前にもどる）</li>
+          <li><span class="item-ic ic-bulb"></span> <b>青い玉</b> ＝ ヒント +1（次の一手を光らせる）<br />どちらも畑の上に落ちていて、乗ると拾えます。</li>
+          <li>📤 下の「コード」ボタンでステージコードを表示・コピー。コード入力すれば同じステージを共有・再開できます。</li>
+        </ul>
+        <p class="modal-text small">PCキー: 矢印=移動 / Enter=OK / R=リトライ / Z=まきもどし / H=ヒント / M=サウンド</p>
+        <button id="help-close" class="big-btn primary">とじる</button>
+      </div>
+    </div>
+
+    <!-- クリア -->
+    <div id="modal-clear" class="modal hidden">
+      <div class="modal-box">
+        <h2 class="clear-title">🎉 クリア！ 🎉</h2>
+        <p class="modal-text">ステージ <b id="clear-stage">1</b> クリア！</p>
+        <button id="btn-next" class="big-btn primary">つぎのステージへ</button>
+      </div>
+    </div>
+
+    <!-- ステージコード共有 -->
+    <div id="modal-share" class="modal hidden">
+      <div class="modal-box">
+        <h2>ステージコード</h2>
+        <p class="modal-text small">このコードを入力すると、同じステージを最初から遊べます。おもしろいステージができたら友だちに教えよう！</p>
+        <div class="share-code" id="share-code">0000-1</div>
+        <button id="btn-share-copy" class="big-btn primary">📋 コードをコピー</button>
+        <button id="share-close" class="big-btn sub">とじる</button>
+      </div>
+    </div>
+
+    <!-- ゲームオーバー -->
+    <div id="modal-over" class="modal hidden">
+      <div class="modal-box">
+        <h2>😢 ざんねん…</h2>
+        <p class="modal-text" id="over-msg">これ以上すすめません…</p>
+        <button id="btn-rewind-over" class="big-btn primary">★ まきもどしを使う</button>
+        <button id="btn-retry-over" class="big-btn">リトライ</button>
+        <button id="btn-title-over" class="big-btn sub">タイトルへ</button>
+      </div>
+    </div>
+
+    <div id="toast" class="hidden"></div>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

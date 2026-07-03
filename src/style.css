@@ -1,0 +1,411 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+:root {
+  --green: #58b94c;
+  --green-dark: #3d9635;
+  --orange: #ff8b2d;
+  --orange-dark: #e06f12;
+  --brown: #5a3b1e;
+  --cream: #fff8ec;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Hiragino Maru Gothic ProN', 'BIZ UDGothic', 'Yu Gothic UI',
+    'Segoe UI', system-ui, sans-serif;
+  background: #244a2c;
+  touch-action: manipulation;
+}
+
+#game-wrap {
+  position: relative;
+  margin: 0 auto;
+  width: min(100vw, 520px);
+  height: 100dvh;
+  overflow: hidden;
+  background: linear-gradient(#aee3ff 0%, #cdefff 45%, #bfe9ff 100%);
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.45);
+}
+
+#c {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ---------- HUD ---------- */
+#hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: max(10px, env(safe-area-inset-top)) 10px
+    max(12px, env(safe-area-inset-bottom));
+}
+
+#hud-top {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.hud-chip {
+  pointer-events: auto;
+  background: rgba(255, 255, 255, 0.92);
+  border: 2px solid var(--green-dark);
+  color: var(--brown);
+  border-radius: 999px;
+  padding: 5px 14px;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.15);
+}
+
+.hud-chip b {
+  color: var(--orange-dark);
+  font-size: 16px;
+}
+
+.self-center {
+  align-self: center;
+  width: auto;
+}
+
+#hud-bottom {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.hud-btn {
+  pointer-events: auto;
+  position: relative;
+  border: none;
+  border-radius: 14px;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 800;
+  font-family: inherit;
+  color: #fff;
+  background: linear-gradient(#6cc95f, var(--green));
+  border-bottom: 4px solid var(--green-dark);
+  cursor: pointer;
+  user-select: none;
+}
+
+.hud-btn:active {
+  transform: translateY(2px);
+  border-bottom-width: 2px;
+}
+
+.hud-btn.disabled {
+  filter: grayscale(0.9) brightness(0.85);
+}
+
+.item-btn {
+  background: linear-gradient(#ffab55, var(--orange));
+  border-bottom-color: var(--orange-dark);
+}
+
+.item-btn .icon {
+  margin-right: 3px;
+}
+
+.badge {
+  position: absolute;
+  top: -8px;
+  right: -6px;
+  background: #fff;
+  color: var(--orange-dark);
+  border: 2px solid var(--orange-dark);
+  border-radius: 999px;
+  min-width: 22px;
+  height: 22px;
+  line-height: 18px;
+  font-size: 12px;
+  text-align: center;
+}
+
+.hud-mini-row {
+  display: flex;
+  gap: 6px;
+}
+
+.hud-btn.mini {
+  padding: 8px 0;
+  width: 38px;
+  font-size: 13px;
+  background: linear-gradient(#9db4c0, #7e97a5);
+  border-bottom-color: #5f7482;
+  opacity: 0.92;
+}
+
+.hud-btn.mini.on {
+  background: linear-gradient(#6cc95f, var(--green));
+  border-bottom-color: var(--green-dark);
+}
+
+.hud-btn.mini.wide {
+  width: auto;
+  padding: 8px 12px;
+  background: linear-gradient(#ffab55, var(--orange));
+  border-bottom-color: var(--orange-dark);
+  opacity: 1;
+}
+
+/* ヘルプ内のアイテムアイコン（ゲーム内の色と白フチを再現） */
+.item-ic {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(90, 59, 30, 0.25);
+  vertical-align: -2px;
+  margin-right: 2px;
+}
+
+.ic-star {
+  background: linear-gradient(#ffe08a, #ffd24a);
+  transform: rotate(45deg);
+  border-radius: 3px;
+}
+
+.ic-bulb {
+  background: linear-gradient(#8ed4ff, #59c2ff);
+  border-radius: 50%;
+}
+
+.share-code {
+  font-size: 34px;
+  font-weight: 900;
+  letter-spacing: 3px;
+  color: var(--orange-dark);
+  background: #fff;
+  border: 3px dashed var(--orange);
+  border-radius: 16px;
+  padding: 12px 8px;
+  user-select: all;
+}
+
+/* ---------- タイトル ---------- */
+.screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 34px;
+  background: linear-gradient(
+    rgba(174, 227, 255, 0.55),
+    rgba(150, 220, 150, 0.35)
+  );
+  backdrop-filter: blur(1px);
+}
+
+.logo {
+  text-align: center;
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.logo-hop,
+.logo-carrot {
+  font-size: clamp(40px, 12vw, 58px);
+  font-weight: 900;
+  line-height: 1.15;
+  color: #fff;
+  -webkit-text-stroke: 2px var(--green-dark);
+  text-shadow: 0 4px 0 var(--green-dark), 0 8px 16px rgba(0, 0, 0, 0.25);
+  letter-spacing: 2px;
+}
+
+.logo-carrot {
+  color: #ffd24a;
+  -webkit-text-stroke: 2px var(--orange-dark);
+  text-shadow: 0 4px 0 var(--orange-dark), 0 8px 16px rgba(0, 0, 0, 0.25);
+}
+
+.logo-sub {
+  margin-top: 14px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--brown);
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 999px;
+  padding: 6px 16px;
+  display: inline-block;
+}
+
+.title-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(78%, 300px);
+}
+
+.title-note {
+  font-size: 12px;
+  color: rgba(60, 80, 50, 0.75);
+  font-weight: 700;
+}
+
+/* ---------- ボタン ---------- */
+.big-btn {
+  border: none;
+  border-radius: 18px;
+  padding: 14px 18px;
+  font-size: 17px;
+  font-weight: 800;
+  font-family: inherit;
+  color: #fff;
+  background: linear-gradient(#6cc95f, var(--green));
+  border-bottom: 5px solid var(--green-dark);
+  cursor: pointer;
+  width: 100%;
+}
+
+.big-btn:active {
+  transform: translateY(3px);
+  border-bottom-width: 2px;
+}
+
+.big-btn.primary {
+  background: linear-gradient(#ffab55, var(--orange));
+  border-bottom-color: var(--orange-dark);
+}
+
+.big-btn.sub {
+  background: linear-gradient(#9db4c0, #7e97a5);
+  border-bottom-color: #5f7482;
+}
+
+.big-btn.slim {
+  width: auto;
+  padding: 12px 20px;
+}
+
+/* ---------- モーダル ---------- */
+.modal {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(20, 40, 20, 0.45);
+  z-index: 20;
+  padding: 20px;
+}
+
+.modal-box {
+  background: var(--cream);
+  border: 4px solid var(--green-dark);
+  border-radius: 22px;
+  padding: 24px 20px;
+  width: min(100%, 360px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: center;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
+}
+
+.modal-box h2 {
+  color: var(--green-dark);
+  font-size: 24px;
+}
+
+.clear-title {
+  color: var(--orange-dark) !important;
+}
+
+.modal-text {
+  color: var(--brown);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.modal-text.small {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.help-list {
+  text-align: left;
+  color: var(--brown);
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.55;
+  padding-left: 6px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.code-row {
+  display: flex;
+  gap: 8px;
+}
+
+#code-input {
+  flex: 1;
+  border: 3px solid var(--green-dark);
+  border-radius: 14px;
+  padding: 10px 14px;
+  font-size: 18px;
+  font-weight: 800;
+  font-family: inherit;
+  color: var(--brown);
+  text-align: center;
+  outline: none;
+  min-width: 0;
+}
+
+#code-input:focus {
+  border-color: var(--orange);
+}
+
+/* ---------- トースト ---------- */
+#toast {
+  position: absolute;
+  left: 50%;
+  bottom: 90px;
+  transform: translateX(-50%);
+  background: rgba(40, 60, 35, 0.92);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 10px 18px;
+  border-radius: 999px;
+  white-space: nowrap;
+  z-index: 30;
+  pointer-events: none;
+}
+
+.hidden {
+  display: none !important;
+}
