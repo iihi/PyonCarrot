@@ -232,25 +232,32 @@ export class GameScene {
       this._fx.add(portal);
 
       // ポータルが開く
-      this.tween(0.25, 0, easeOut, (k) => {
+      this.tween(0.3, 0, easeOut, (k) => {
         portal.scale.setScalar(0.2 + 0.8 * k);
         disc.material.opacity = 0.55 * k;
         rim.material.opacity = 0.9 * k;
       });
       this._sparkleBurst(new THREE.Vector3(pp.x, 0.25, pp.z));
 
-      // ウサギが下からせり上がって現れる（スタートマスの方を向いて）
+      // ウサギが手前(カメラ側)を向いたまま、ゆっくり下からせり上がって現れる
+      const camFace = Math.PI / 4;
       const face = Math.atan2(goalP.x - pp.x, goalP.z - pp.z);
-      this.rabbit.rotation.set(0, face, 0);
+      this.rabbit.rotation.set(0, camFace, 0);
       this.rabbit.scale.setScalar(1);
       this.rabbit.position.set(pp.x, -0.65, pp.z);
-      this.tween(0.4, 0.22, easeOut, (k) => {
+      this.tween(0.7, 0.25, easeOut, (k) => {
         this.rabbit.visible = true;
         this.rabbit.position.y = -0.65 + 0.71 * k; // 地面(0.06)まで
       }, null, 'rabbit');
 
+      // くるっとスタートマスの方へ向き直る
+      this.tween(0.18, 1.02, easeOut, (k) => {
+        this.rabbit.rotation.y =
+          camFace + Math.atan2(Math.sin(face - camFace), Math.cos(face - camFace)) * k;
+      }, null, 'rabbit');
+
       // 通常の移動と同じ「ぴょーん」でスタートマスへ
-      this.tween(0.38, 0.75, (t) => t, (k) => {
+      this.tween(0.38, 1.25, (t) => t, (k) => {
         this.rabbit.position.lerpVectors(
           new THREE.Vector3(pp.x, 0.06, pp.z),
           goalP,
@@ -267,7 +274,7 @@ export class GameScene {
       }, 'rabbit');
 
       // ジャンプと同時にポータルは閉じる
-      this.tween(0.3, 0.8, easeOut, (k) => {
+      this.tween(0.3, 1.3, easeOut, (k) => {
         portal.scale.setScalar(1 - 0.99 * k);
         disc.material.opacity = 0.55 * (1 - k);
         rim.material.opacity = 0.9 * (1 - k);
@@ -275,7 +282,7 @@ export class GameScene {
 
       // 着地スクワッシュ→カメラの方へ向き直って完了
       const turnTo = Math.PI / 4;
-      this.tween(0.3, 1.15, easeOut, (k) => {
+      this.tween(0.3, 1.65, easeOut, (k) => {
         const sy = 0.75 + 0.25 * k;
         this.rabbit.scale.set(1 + 0.15 * (1 - k), sy, 1 + 0.15 * (1 - k));
         this.rabbit.rotation.y =
