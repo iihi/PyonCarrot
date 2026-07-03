@@ -147,17 +147,70 @@ export class GameScene {
       this.goalMesh.scale.setScalar(Math.max(k, 0.01));
     });
 
-    // ウサギをスタート位置へ（乗っているマスのニンジンは消しておく）
+    // ウサギは登場シーン(playEntrance)まで隠しておく
     const start = level.tiles[0];
     this.tileMeshes[0].group.userData.carrots.visible = false;
-    this.rabbit.visible = true;
+    this.rabbit.visible = false;
     this.rabbit.position.copy(this.worldPos(start.x, start.y, 0.22));
-    this.rabbit.rotation.y = Math.PI / 4; // 顔が見えるよう手前(カメラ側)を向く
-    this.rabbit.rotation.x = 0;
+    this.rabbit.rotation.set(0, Math.PI / 4, 0);
     this.rabbit.scale.setScalar(1);
 
     this._fitCamera(false);
     this._buildMinis(level);
+  }
+
+  // 白ウサギの登場シーン: 画面手前から2ホップでスタートマスへ入り、カメラの方を向く
+  playEntrance() {
+    return new Promise((resolve) => {
+      const start = this.level.tiles[0];
+      const goalP = this.worldPos(start.x, start.y, 0.22);
+      const fwd = { x: Math.SQRT1_2, z: Math.SQRT1_2 }; // 画面の手前方向
+
+      const pts = [2.3, 1.1, 0].map((d, i) => {
+        const p = new THREE.Vector3(
+          goalP.x + fwd.x * d,
+          d > 0 ? 0.06 : 0.22, // 途中は草の上、最後はマスの上
+          goalP.z + fwd.z * d
+        );
+        return p;
+      });
+
+      this.killTweens('rabbit');
+      this.rabbit.visible = true;
+      this.rabbit.position.copy(pts[0]);
+      this.rabbit.rotation.y = Math.atan2(-fwd.x, -fwd.z); // 進行方向(奥)を向く
+
+      let delay = 0.15;
+      for (let i = 0; i < 2; i++) {
+        const a = pts[i];
+        const b = pts[i + 1];
+        this.tween(0.34, delay, (t) => t, (k) => {
+          this.rabbit.position.lerpVectors(a, b, k);
+          this.rabbit.position.y = a.y + (b.y - a.y) * k + 0.8 * 4 * k * (1 - k);
+          const sy = 1 + 0.3 * Math.sin(k * Math.PI);
+          this.rabbit.scale.set(1 / Math.sqrt(sy), sy, 1 / Math.sqrt(sy));
+          this._applyJumpPose(Math.sin(k * Math.PI));
+        }, null, 'rabbit');
+        delay += 0.42;
+      }
+
+      // 着地後、くるっとカメラの方へ向き直ってぴょこんと決めポーズ
+      const turnFrom = Math.atan2(-fwd.x, -fwd.z);
+      const turnTo = Math.PI / 4;
+      this.tween(0.32, delay, easeOut, (k) => {
+        this._applyJumpPose(0);
+        this.rabbit.rotation.y =
+          turnFrom + Math.atan2(Math.sin(turnTo - turnFrom), Math.cos(turnTo - turnFrom)) * k;
+        this.rabbit.position.y = 0.22 + 0.35 * 4 * k * (1 - k);
+        const sy = 1 + 0.15 * Math.sin(k * Math.PI);
+        this.rabbit.scale.set(1 / Math.sqrt(sy), sy, 1 / Math.sqrt(sy));
+      }, () => {
+        this.rabbit.scale.setScalar(1);
+        this.rabbit.position.copy(goalP);
+        this.rabbit.rotation.y = turnTo;
+        resolve();
+      }, 'rabbit');
+    });
   }
 
   // 10ステージごとに1匹増える極小ウサギ（最大10匹）。
@@ -341,17 +394,29 @@ export class GameScene {
       this.rabbit.rotation.y = Math.atan2(p1.x - p0.x, p1.z - p0.z);
       this.killTweens('rabbit');
 
-      // ゴールに飛び込むときはピンクウサギがぴょんと横によける
+      // ゴールに飛び込むときはピンクウサギが隣のマスへぴょんとよける
+      // （盤面の外に出ないよう、グリッド中央に近い隣接マスを選ぶ）
       if (target === 'goal' && this.goalMesh && this.goalMesh.userData.bunny) {
         const b = this.goalMesh.userData.bunny;
         this.goalCollected = true; // 待機モーションを止めて演出をtween制御にする
-        const bx = Math.SQRT1_2 * 1.0; // 重ならないよう1マスぶん横へ
-        const bz = -Math.SQRT1_2 * 1.0;
+        const goal = this.level.goal;
+        const mid = (GRID - 1) / 2;
+        let best = null;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = goal.x + dx;
+          const ny = goal.y + dy;
+          if (nx < 0 || ny < 0 || nx >= GRID || ny >= GRID) continue;
+          if (nx === from.x && ny === from.y) continue; // プレイヤーの進入元は避ける
+          const d = Math.hypot(nx - mid, ny - mid);
+          if (!best || d < best.d) best = { bx: dx, bz: dy, d };
+        }
+        const bx = best ? best.bx : Math.SQRT1_2;
+        const bz = best ? best.bz : -Math.SQRT1_2;
         b.rotation.y = Math.atan2(bx, bz); // 跳ぶ方向を向いて
         this.tween(0.36, crouchDur + flightDur * 0.3, (t) => t, (k) => {
           b.position.x = bx * k;
           b.position.z = bz * k;
-          b.position.y = 0.2 + 0.55 * 4 * k * (1 - k); // 山なりにホップ
+          b.position.y = 0.2 + 0.55 * 4 * k * (1 - k) - 0.14 * k; // 隣は地面なので少し低く着地
           const sy = 1 + 0.22 * Math.sin(k * Math.PI);
           b.userData.inner.scale.y = 0.92 * sy;
         }, () => {
@@ -481,9 +546,10 @@ export class GameScene {
     // ピンクウサギも一緒に喜んで跳ねる（短め: 2回）
     const bunny = this.goalMesh && this.goalMesh.userData.bunny;
     if (bunny) {
+      const baseY = bunny.position.y; // よけた先の地面の高さを基準に
       for (let i = 0; i < 2; i++) {
         this.tween(0.4, 0.05 + i * 0.42, (t) => t, (k) => {
-          bunny.position.y = 0.2 + 0.6 * 4 * k * (1 - k);
+          bunny.position.y = baseY + 0.6 * 4 * k * (1 - k);
           bunny.rotation.z = 0.15 * Math.sin(k * Math.PI * 2);
         }, () => {
           bunny.rotation.z = 0;

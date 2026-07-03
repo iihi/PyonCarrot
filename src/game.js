@@ -302,10 +302,15 @@ export class Game {
     // 数字とグリッドは常時ON
     this.scene.setNumbersVisible(true);
     this.scene.setGridVisible(true);
-    this.state = 'playing';
     this._save();
     this._updateHUD();
-    this._updateReachable();
+
+    // 白ウサギの登場シーン（操作キャラだと分かるように毎ステージ再生）
+    this.state = 'busy';
+    this.scene.playEntrance().then(() => {
+      this.state = 'playing';
+      this._updateReachable();
+    });
   }
 
   retryStage() {
