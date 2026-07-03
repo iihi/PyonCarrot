@@ -403,8 +403,8 @@ export class Game {
     $('clear-stage').textContent = this.stage;
     // 次ステージを先にセーブ（途中で閉じても続きから遊べる）
     this._save(this.stage + 1);
-    // 喜び→見つめ合いの演出が見えてからダイアログを出す
-    setTimeout(() => this._show('modal-clear'), 1900);
+    // 見つめ合い→一緒に喜ぶ演出が見えてからダイアログを出す
+    setTimeout(() => this._show('modal-clear'), 1500);
   }
 
   // ---------- アイテム ----------
