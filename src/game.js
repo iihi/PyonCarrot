@@ -29,6 +29,13 @@ export class Game {
     this._bindUI();
     this._loadSettings();
     this._showTitle();
+
+    // 初回のタップ/クリックでiOSのオーディオを解錠する
+    window.addEventListener(
+      'pointerdown',
+      () => this.sfx.unlock(),
+      { once: true }
+    );
   }
 
   // ---------- UI ----------

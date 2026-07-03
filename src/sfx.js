@@ -4,6 +4,32 @@ export class Sfx {
   constructor() {
     this.ctx = null;
     this.enabled = true;
+
+    // iOS 16.4+: サイレントスイッチONでもWeb Audioが消音されないようにする
+    // (新しいiOSではWeb Audioが環境音扱いになり、マナーモードで無音になるため)
+    try {
+      if (navigator.audioSession) navigator.audioSession.type = 'playback';
+    } catch (e) {}
+
+    // バックグラウンドから戻ったときにオーディオを再開(iOS Safariの中断対策)
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && this.ctx && this.ctx.state !== 'running') {
+        this.ctx.resume();
+      }
+    });
+  }
+
+  // 初回のユーザー操作で呼び、無音バッファを鳴らしてiOSのオーディオを解錠する
+  unlock() {
+    const ctx = this._ensure();
+    if (!ctx) return;
+    try {
+      const buf = ctx.createBuffer(1, 1, 22050);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      src.start(0);
+    } catch (e) {}
   }
 
   _ensure() {
@@ -12,7 +38,8 @@ export class Sfx {
       if (!AC) return null;
       this.ctx = new AC();
     }
-    if (this.ctx.state === 'suspended') this.ctx.resume();
+    // 'interrupted' はiOS Safari独自の中断状態
+    if (this.ctx.state !== 'running') this.ctx.resume();
     return this.ctx;
   }
 
