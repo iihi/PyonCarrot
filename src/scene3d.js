@@ -207,7 +207,43 @@ export class GameScene {
       const start = this.level.tiles[0];
       const goalP = this.worldPos(start.x, start.y, 0.22);
       const fwd = { x: Math.SQRT1_2, z: Math.SQRT1_2 }; // 画面の手前方向
-      const pp = new THREE.Vector3(goalP.x + fwd.x * 1.5, 0, goalP.z + fwd.z * 1.5);
+      const side = { x: Math.SQRT1_2, z: -Math.SQRT1_2 }; // 画面の横方向
+
+      // ポータル位置: 基本は画面の真下。他のマスと重なる場合は
+      // 右下→左下→さらに下…の順で空いている草地を探す
+      const others = [...this.level.tiles.slice(1), this.level.goal].map((t) =>
+        this.worldPos(t.x, t.y)
+      );
+      const candidates = [];
+      for (const f of [1.5, 2.0, 2.5, 3.0]) {
+        for (const sd of [0, 0.8, -0.8, 1.6, -1.6, 2.4, -2.4]) {
+          candidates.push([f, sd]);
+        }
+      }
+      let pp = null;
+      let bestPp = null;
+      let bestClearance = -1;
+      for (const [f, sd] of candidates) {
+        const c = new THREE.Vector3(
+          goalP.x + fwd.x * f + side.x * sd,
+          0,
+          goalP.z + fwd.z * f + side.z * sd
+        );
+        if (Math.hypot(c.x, c.z) > 7.2) continue; // 島から出ない
+        let clearance = Infinity;
+        for (const o of others) {
+          clearance = Math.min(clearance, Math.hypot(o.x - c.x, o.z - c.z));
+        }
+        if (clearance >= 1.05) {
+          pp = c; // 手前寄りの候補から順に見ているので最初の合格を採用
+          break;
+        }
+        if (clearance > bestClearance) {
+          bestClearance = clearance;
+          bestPp = c;
+        }
+      }
+      if (!pp) pp = bestPp || new THREE.Vector3(goalP.x + fwd.x * 1.5, 0, goalP.z + fwd.z * 1.5);
       this.killTweens('rabbit');
 
       // ワープゾーン（水色の光る円盤＋リング）
