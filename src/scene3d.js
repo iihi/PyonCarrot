@@ -386,6 +386,11 @@ export class GameScene {
       const to = target === 'goal' ? this.level.goal : this.level.tiles[target];
       const p0 = this.worldPos(from.x, from.y, 0.22);
       const p1 = this.worldPos(to.x, to.y, 0.22);
+      // ゴールでは2匹が台座に並ぶよう、白ウサギは左寄りに着地する
+      if (target === 'goal') {
+        p1.x += Math.SQRT1_2 * -0.36;
+        p1.z += -Math.SQRT1_2 * -0.36;
+      }
       const dist = Math.abs(to.x - from.x) + Math.abs(to.y - from.y);
       const height = 0.95 + dist * 0.32;
       const crouchDur = 0.12;
@@ -394,30 +399,19 @@ export class GameScene {
       this.rabbit.rotation.y = Math.atan2(p1.x - p0.x, p1.z - p0.z);
       this.killTweens('rabbit');
 
-      // ゴールに飛び込むときはピンクウサギが隣のマスへぴょんとよける
-      // （盤面の外に出ないよう、グリッド中央に近い隣接マスを選ぶ）
+      // ゴールに飛び込むときはピンクウサギが台座の右側へ小さくホップしてよける
+      // （台座の上に留まるので畑マスから外れず、横移動なのでお尻も向かない）
       if (target === 'goal' && this.goalMesh && this.goalMesh.userData.bunny) {
         const b = this.goalMesh.userData.bunny;
         this.goalCollected = true; // 待機モーションを止めて演出をtween制御にする
-        const goal = this.level.goal;
-        const mid = (GRID - 1) / 2;
-        let best = null;
-        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          const nx = goal.x + dx;
-          const ny = goal.y + dy;
-          if (nx < 0 || ny < 0 || nx >= GRID || ny >= GRID) continue;
-          if (nx === from.x && ny === from.y) continue; // プレイヤーの進入元は避ける
-          const d = Math.hypot(nx - mid, ny - mid);
-          if (!best || d < best.d) best = { bx: dx, bz: dy, d };
-        }
-        const bx = best ? best.bx : Math.SQRT1_2;
-        const bz = best ? best.bz : -Math.SQRT1_2;
-        b.rotation.y = Math.atan2(bx, bz); // 跳ぶ方向を向いて
-        this.tween(0.36, crouchDur + flightDur * 0.3, (t) => t, (k) => {
+        const bx = Math.SQRT1_2 * 0.34; // 画面の右方向へ
+        const bz = -Math.SQRT1_2 * 0.34;
+        b.rotation.y = Math.atan2(bx, bz); // 跳ぶ方向(横)を向いて
+        this.tween(0.32, crouchDur + flightDur * 0.3, (t) => t, (k) => {
           b.position.x = bx * k;
           b.position.z = bz * k;
-          b.position.y = 0.2 + 0.55 * 4 * k * (1 - k) - 0.14 * k; // 隣は地面なので少し低く着地
-          const sy = 1 + 0.22 * Math.sin(k * Math.PI);
+          b.position.y = 0.2 + 0.35 * 4 * k * (1 - k); // 台座の上で小さくホップ
+          const sy = 1 + 0.2 * Math.sin(k * Math.PI);
           b.userData.inner.scale.y = 0.92 * sy;
         }, () => {
           b.userData.inner.scale.y = 0.92;
