@@ -5,7 +5,6 @@ import {
   makeGoalRabbit,
   makeTile,
   makeGoal,
-  makePickup,
   makeIsland,
   makeNumberSprite,
   makeRing,
@@ -161,15 +160,8 @@ export class GameScene {
       const number = makeNumberSprite(t.value);
       number.visible = this.numbersVisible;
       group.add(number);
-      let pickup = null;
-      if (t.pickup) {
-        pickup = makePickup(t.pickup);
-        // ニンジンに埋もれないよう画面の手前(下)側へ
-        pickup.position.set(Math.SQRT1_2 * 0.34, 0, Math.SQRT1_2 * 0.34);
-        group.add(pickup);
-      }
       this.world.add(group);
-      this.tileMeshes.push({ group, number, pickup, baseY, idx: i, alive: true });
+      this.tileMeshes.push({ group, number, baseY, idx: i, alive: true });
 
       // 登場アニメーション
       group.position.y = baseY - 1.2;
@@ -191,8 +183,8 @@ export class GameScene {
     });
 
     // ウサギは登場シーン(playEntrance)まで隠しておく
+    // (スタートマスのニンジンは登場後にウサギが食べる)
     const start = level.tiles[0];
-    this.tileMeshes[0].group.userData.carrots.visible = false;
     this.rabbit.visible = false;
     this.rabbit.position.copy(
       this.worldPos(start.x, start.y, this._standY(start.x, start.y))
@@ -701,28 +693,7 @@ export class GameScene {
     }, `carrot${idx}`);
   }
 
-  // まきもどしで復元されたマスのニンジンを戻す
-  restoreCarrots(idx) {
-    const c = this.tileMeshes[idx].group.userData.carrots;
-    this.killTweens(`carrot${idx}`);
-    c.visible = true;
-    this.tween(0.25, 0, easeOut, (k) => {
-      c.scale.setScalar(Math.max(0.01, k));
-    }, null, `carrot${idx}`);
-  }
-
-  collectPickup(idx) {
-    const tm = this.tileMeshes[idx];
-    if (!tm.pickup) return;
-    const p = tm.pickup;
-    tm.pickup = null;
-    this.tween(0.4, 0, easeOut, (k) => {
-      p.position.y = k * 1.2;
-      p.scale.setScalar(Math.max(0.01, 1 - k));
-    }, () => {
-      tm.group.remove(p);
-    });
-  }
+  // ※まきもどしで復元されたマスは「食べたあと」なのでニンジンは戻さない
 
   celebrate() {
     this.goalCollected = true;
@@ -916,13 +887,6 @@ export class GameScene {
         e.mesh.rotation.x = e.baseX + twitch - 0.5 * this.jumpPose;
       }
     }
-    for (const t of this.tileMeshes) {
-      if (t.pickup) {
-        t.pickup.userData.spin.rotation.y += dt * 2.5;
-        t.pickup.userData.spin.position.y = 0.42 + Math.sin(this.time * 3 + t.idx) * 0.05;
-      }
-    }
-
     // 極小ウサギがゆっくり行き来する（にぎやかし）
     const miniSide = { x: Math.SQRT1_2, z: -Math.SQRT1_2 };
     for (const m of this.minis) {

@@ -331,38 +331,6 @@ export function makeGoal() {
   return g;
 }
 
-// ---------- アイテム ----------
-export function makePickup(type) {
-  const g = new THREE.Group();
-  let m;
-  if (type === 'rewind') {
-    // 金の星（まきもどし +1）
-    m = mesh(
-      new THREE.OctahedronGeometry(0.14, 0),
-      mat(0xffd24a, { emissive: 0x8a6a00, emissiveIntensity: 0.5, roughness: 0.4 })
-    );
-    m.scale.set(1, 1.4, 1);
-  } else {
-    // 青いひらめき（ヒント +1）
-    m = mesh(
-      new THREE.SphereGeometry(0.12, 6, 5),
-      mat(0x59c2ff, { emissive: 0x1266aa, emissiveIntensity: 0.6, roughness: 0.4 })
-    );
-  }
-  // 白い縁取り（数字より細め）: 同じ形を少し大きくして裏面だけ描画
-  const hull = new THREE.Mesh(
-    m.geometry,
-    new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.BackSide })
-  );
-  hull.scale.setScalar(1.14);
-  m.add(hull);
-
-  m.position.y = 0.42; // ニンジンより低め（手前に置く前提）
-  g.add(m);
-  g.userData.spin = m;
-  return g;
-}
-
 // ---------- 段差地形（段々畑） ----------
 // 高さレベルごとに草の色を少し変えて、パッと見で段が分かるようにする
 const TERRACE_TOP = [0, 0x8fd465, 0x9cdb6f, 0xaae37b];

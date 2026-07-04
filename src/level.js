@@ -109,10 +109,7 @@ export function generate(seed, stage) {
     // 試行ごとに地形も作り直す(乱数列は連続なので決定論は保たれる)
     const heights = genTerrain(rand, stage, cap);
     const level = tryGenerate(rand, n, seed, stage, heights);
-    if (level) {
-      addPickups(level, rand, stage);
-      return level;
-    }
+    if (level) return level;
     if (attempt > 350 && n > 8) n--;
   }
   throw new Error('stage generation failed');
@@ -124,7 +121,7 @@ function tryGenerate(rand, n, seed, stage, heights) {
 
   const sx = 2 + Math.floor(rand() * (GRID - 4));
   const sy = 2 + Math.floor(rand() * (GRID - 4));
-  const tiles = [{ x: sx, y: sy, value: 0, pickup: null }];
+  const tiles = [{ x: sx, y: sy, value: 0 }];
   occ.add(key(sx, sy));
   let goal = null;
 
@@ -148,7 +145,7 @@ function tryGenerate(rand, n, seed, stage, heights) {
     const o = opts[Math.floor(rand() * opts.length)];
     cur.value = o.need;
     if (j < n - 1) {
-      tiles.push({ x: o.nx, y: o.ny, value: 0, pickup: null });
+      tiles.push({ x: o.nx, y: o.ny, value: 0 });
       occ.add(key(o.nx, o.ny));
     } else {
       goal = { x: o.nx, y: o.ny };
@@ -156,18 +153,6 @@ function tryGenerate(rand, n, seed, stage, heights) {
   }
 
   return { seed, stage, tiles, goal, heights, count: n };
-}
-
-function addPickups(level, rand, stage) {
-  if (stage < 3) return;
-  const nPick = Math.min(1 + (stage >= 8 ? 1 : 0), level.tiles.length - 2);
-  const candidates = [];
-  for (let i = 1; i < level.tiles.length; i++) candidates.push(i);
-  for (let p = 0; p < nPick && candidates.length; p++) {
-    const ci = Math.floor(rand() * candidates.length);
-    const idx = candidates.splice(ci, 1)[0];
-    level.tiles[idx].pickup = rand() < 0.5 ? 'rewind' : 'hint';
-  }
 }
 
 // ---------- 到達判定 ----------

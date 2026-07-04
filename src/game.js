@@ -1,4 +1,4 @@
-// ゲーム本体：状態管理、UI、セーブ/コンティニュー
+// ゲーム本体：状態管理、UI、セーブ/コンティニュー、ニンジン経済とスコア
 import {
   generate,
   reachableFrom,
@@ -11,7 +11,15 @@ import { Sfx } from './sfx.js';
 
 const SAVE_KEY = 'pyoncarrot_save_v1';
 
+// ---------- ニンジン経済・スコアの定数（調整はここ） ----------
+const COST_REWIND = 3; // まきもどしのニンジン消費
+const COST_HINT = 5; // ヒントのニンジン消費
+const SCORE_PER_CARROT = 10; // 残ニンジン1本あたりのスコア
+const scoreBase = (stage) => 100 + 20 * Math.min(stage, 30); // クリア基礎スコア(30で頭打ち)
+const retryMult = (r) => (r === 0 ? 1.5 : r >= 3 ? 0.5 : 1.0); // リトライ倍率
+
 const $ = (id) => document.getElementById(id);
+const fmt = (n) => n.toLocaleString('ja-JP');
 
 export class Game {
   constructor() {
@@ -21,8 +29,10 @@ export class Game {
     this.state = 'title'; // title | playing | busy | clear | over
     this.seed = 0;
     this.stage = 1;
-    this.stock = { rewind: 1, hint: 1 };
-    this.stageStartStock = { ...this.stock };
+    this.score = 0; // 累計スコア(セーブされる)
+    this.hiscore = 0;
+    this.carrots = 0; // このステージで食べたニンジン(持ち越しなし)
+    this.retryCount = 0; // このステージのリトライ回数(倍率用)
     this.history = [];
 
     this.scene.onTileTap = (id) => this.tryMove(id);
@@ -57,6 +67,9 @@ export class Game {
       this._hide('modal-help');
     };
     $('btn-code-go').onclick = () => this._continueFromCode();
+    $('code-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') this._continueFromCode();
+    });
     $('btn-paste').onclick = () => this._pasteCode();
     $('btn-share').onclick = () => {
       this.sfx.click();
@@ -69,16 +82,14 @@ export class Game {
       this.sfx.click();
       this._hide('modal-share');
     };
-    $('code-input').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') this._continueFromCode();
-    });
     $('btn-resume').onclick = () => {
       const save = this._loadSave();
       if (save) {
         this.sfx.click();
         this.seed = save.seed;
         this.stage = save.stage;
-        this.stock = save.stock || { rewind: 1, hint: 1 };
+        this.score = save.score || 0;
+        this.retryCount = 0;
         this._hide('modal-continue');
         this.startStage();
       }
@@ -90,6 +101,7 @@ export class Game {
     $('btn-next').onclick = () => {
       this.sfx.click();
       this.stage++;
+      this.retryCount = 0;
       this._hide('modal-clear');
       this.startStage();
     };
@@ -201,6 +213,57 @@ export class Game {
     $(id).classList.add('hidden');
   }
 
+  _toast(msg, ms = 1800) {
+    const t = $('toast');
+    t.textContent = msg;
+    t.classList.remove('hidden');
+    clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => t.classList.add('hidden'), ms);
+  }
+
+  _showTitle() {
+    this.state = 'title';
+    this._hideTutorial(false);
+    this._show('screen-title');
+    this._hide('hud');
+    const hi = $('title-hiscore');
+    if (this.hiscore > 0) {
+      hi.textContent = `ハイスコア ${fmt(this.hiscore)}`;
+      hi.classList.remove('hidden');
+    } else {
+      hi.classList.add('hidden');
+    }
+  }
+
+  _openContinue() {
+    const save = this._loadSave();
+    const info = $('resume-info');
+    if (save) {
+      info.classList.remove('hidden');
+      $('btn-resume').textContent = `前回のつづきから（ステージ ${save.stage}）`;
+    } else {
+      info.classList.add('hidden');
+    }
+    $('code-input').value = '';
+    this._show('modal-continue');
+    if (!save) $('code-input').focus();
+  }
+
+  _continueFromCode() {
+    const parsed = parseCode($('code-input').value);
+    if (!parsed) {
+      this._toast('コードの形式が違います（例: 1234-5）');
+      return;
+    }
+    this.sfx.click();
+    this.seed = parsed.seed;
+    this.stage = parsed.stage;
+    this.score = 0; // コード再開はスコア0から(コードにはスコアは含まれない)
+    this.retryCount = 0;
+    this._hide('modal-continue');
+    this.startStage();
+  }
+
   // ---------- クリップボード ----------
   async _copyText(text) {
     let ok = false;
@@ -243,55 +306,12 @@ export class Game {
     }
   }
 
-  _toast(msg, ms = 1800) {
-    const t = $('toast');
-    t.textContent = msg;
-    t.classList.remove('hidden');
-    clearTimeout(this._toastTimer);
-    this._toastTimer = setTimeout(() => t.classList.add('hidden'), ms);
-  }
-
-  _showTitle() {
-    this.state = 'title';
-    this._show('screen-title');
-    this._hide('hud');
-    const save = this._loadSave();
-    $('btn-continue').classList.toggle('hidden', false);
-  }
-
-  _openContinue() {
-    const save = this._loadSave();
-    const info = $('resume-info');
-    if (save) {
-      info.classList.remove('hidden');
-      $('btn-resume').textContent = `前回のつづきから（ステージ ${save.stage}）`;
-    } else {
-      info.classList.add('hidden');
-    }
-    $('code-input').value = '';
-    this._show('modal-continue');
-    if (!save) $('code-input').focus();
-  }
-
-  _continueFromCode() {
-    const parsed = parseCode($('code-input').value);
-    if (!parsed) {
-      this._toast('コードの形式が違います（例: 1234-5）');
-      return;
-    }
-    this.sfx.click();
-    this.seed = parsed.seed;
-    this.stage = parsed.stage;
-    this.stock = { rewind: 1, hint: 1 };
-    this._hide('modal-continue');
-    this.startStage();
-  }
-
   // ---------- ゲーム進行 ----------
   newGame() {
     this.seed = 1000 + Math.floor(Math.random() * 9000);
     this.stage = 1;
-    this.stock = { rewind: 1, hint: 1 };
+    this.score = 0;
+    this.retryCount = 0;
     this.startStage();
   }
 
@@ -299,9 +319,8 @@ export class Game {
     this.level = generate(this.seed, this.stage);
     this.alive = this.level.tiles.map((_, i) => i !== 0);
     this.cur = 0;
-    this.count = this.level.count;
+    this.carrots = 0; // ニンジンは持ち越さない
     this.history = [];
-    this.stageStartStock = { ...this.stock };
 
     this._hide('screen-title');
     this._show('hud');
@@ -318,10 +337,41 @@ export class Game {
     this.state = 'busy';
     this.sfx.warp();
     this.scene.playEntrance().then(() => {
+      // 登場したらスタートマスのニンジンをまず1口
+      this._eatTile(0);
       this.state = 'playing';
+      this._updateHUD();
       this._updateReachable();
       this._maybeShowHeightTutorial();
     });
+  }
+
+  retryStage() {
+    if (this.state === 'busy') return;
+    this.retryCount++;
+    this.startStage();
+  }
+
+  // マスのニンジンを食べる(各マス1回だけ。まきもどしても2回目はなし)
+  _eatTile(idx) {
+    const tile = this.level.tiles[idx];
+    if (tile.eaten) return;
+    tile.eaten = true;
+    this.carrots += tile.value;
+    this.scene.eatCarrots(idx);
+    this._carrotPop(tile.x, tile.y, tile.value);
+  }
+
+  // 「+N🥕」のポップ表示
+  _carrotPop(gx, gy, n) {
+    const p = this.scene.projectToScreen(gx, gy, 1.0);
+    const el = document.createElement('div');
+    el.className = 'carrot-pop';
+    el.textContent = `+${n}🥕`;
+    el.style.left = `${p.x}px`;
+    el.style.top = `${p.y}px`;
+    $('game-wrap').appendChild(el);
+    setTimeout(() => el.remove(), 1000);
   }
 
   // ---------- 段差の初回チュートリアル ----------
@@ -360,19 +410,16 @@ export class Game {
     }
   }
 
-  retryStage() {
-    if (this.state === 'busy') return;
-    this.stock = { ...this.stageStartStock };
-    this.startStage();
-  }
-
+  // ---------- HUD ----------
   _updateHUD() {
     $('hud-stage').textContent = this.stage;
-    $('hud-count').textContent = this.count;
-    $('cnt-rewind').textContent = this.stock.rewind;
-    $('cnt-hint').textContent = this.stock.hint;
-    $('btn-rewind').classList.toggle('disabled', !this.stock.rewind || !this.history.length);
-    $('btn-hint').classList.toggle('disabled', !this.stock.hint);
+    $('hud-score').textContent = fmt(this.score);
+    $('hud-count').textContent = this.carrots;
+    $('btn-rewind').classList.toggle(
+      'disabled',
+      this.carrots < COST_REWIND || !this.history.length
+    );
+    $('btn-hint').classList.toggle('disabled', this.carrots < COST_HINT);
   }
 
   _updateReachable() {
@@ -385,9 +432,10 @@ export class Game {
       this.scene.sadHop();
       this.sfx.gameover();
       $('over-msg').textContent = 'これ以上すすめません…';
+      $('over-score').textContent = fmt(this.score);
       $('btn-rewind-over').classList.toggle(
         'hidden',
-        !(this.stock.rewind > 0 && this.history.length > 0)
+        !(this.carrots >= COST_REWIND && this.history.length > 0)
       );
       setTimeout(() => this._show('modal-over'), 700);
     }
@@ -401,7 +449,7 @@ export class Game {
     this.state = 'busy';
     this.scene.clearRings();
     this.scene.clearHint();
-    this.history.push({ cur: this.cur, count: this.count });
+    this.history.push({ cur: this.cur });
 
     this.sfx.hop();
     const fromIdx = this.cur;
@@ -409,7 +457,6 @@ export class Game {
 
     await this.scene.jumpTo(fromIdx, id);
     this.sfx.land();
-    this.count--;
 
     if (id === 'goal') {
       this._onClear();
@@ -418,17 +465,7 @@ export class Game {
 
     this.cur = id;
     this.alive[id] = false; // 乗っているマスには飛べない
-    this.scene.eatCarrots(id); // 乗ったマスのニンジンはパクッ
-
-    // アイテム取得
-    const tile = this.level.tiles[id];
-    if (tile.pickup && !tile.pickupTaken) {
-      tile.pickupTaken = true;
-      this.stock[tile.pickup]++;
-      this.scene.collectPickup(id);
-      this.sfx.pickup();
-      this._toast(tile.pickup === 'rewind' ? 'まきもどし +1 ★' : 'ヒント +1 💡');
-    }
+    this._eatTile(id); // ニンジンをパクッ(+value)
 
     this.state = 'playing';
     this._updateHUD();
@@ -439,37 +476,67 @@ export class Game {
     this.state = 'clear';
     this.scene.celebrate();
     this.sfx.clear();
+
+    // スコア計算: (基礎 + 残ニンジン×10) × リトライ倍率
+    const base = scoreBase(this.stage);
+    const carrotBonus = this.carrots * SCORE_PER_CARROT;
+    const mult = retryMult(this.retryCount);
+    const gain = Math.round((base + carrotBonus) * mult);
+    this.score += gain;
+    if (this.score > this.hiscore) {
+      this.hiscore = this.score;
+      this._saveSettings();
+    }
     this._updateHUD();
+
+    // クリアダイアログの内訳表示
     $('clear-stage').textContent = this.stage;
+    $('sb-base').textContent = `+${fmt(base)}`;
+    $('sb-carrots-n').textContent = this.carrots;
+    $('sb-carrots').textContent = `+${fmt(carrotBonus)}`;
+    const multRow = $('sb-mult-row');
+    if (mult !== 1.0) {
+      multRow.classList.remove('hidden');
+      $('sb-mult-label').textContent =
+        mult > 1 ? 'ノーリトライボーナス' : `リトライ${this.retryCount}回`;
+      $('sb-mult').textContent = `×${mult}`;
+    } else {
+      multRow.classList.add('hidden');
+    }
+    $('sb-total').textContent = `+${fmt(gain)}`;
+    $('sb-cum').textContent = fmt(this.score);
+
     // 次ステージを先にセーブ（途中で閉じても続きから遊べる）
     this._save(this.stage + 1);
     // 見つめ合い→一緒に喜ぶ演出が見えてからダイアログを出す
     setTimeout(() => this._show('modal-clear'), 1500);
   }
 
-  // ---------- アイテム ----------
+  // ---------- アイテム（ニンジン消費） ----------
   async useRewind() {
     if (this.state !== 'playing') return;
-    if (!this.stock.rewind || !this.history.length) {
-      this._toast('まきもどしが使えません');
+    if (!this.history.length) {
+      this._toast('もどれる手がありません');
+      return;
+    }
+    if (this.carrots < COST_REWIND) {
+      this._toast(`ニンジンが足りません（まきもどしは${COST_REWIND}本）`);
       return;
     }
     this.state = 'busy';
-    this.stock.rewind--;
+    this.carrots -= COST_REWIND;
     this.sfx.rewind();
     this.scene.clearRings();
     this.scene.clearHint();
 
     const prev = this.history.pop();
     const fromId = this.cur;
-    // 今いたマスはフィールドに残る（また飛び先の候補になる）
+    // 今いたマスはフィールドに残る（また飛び先の候補になる。ニンジンは食べたあとなので戻らない）
     this.alive[fromId] = true;
-    this.scene.restoreCarrots(fromId); // 食べたニンジンも巻き戻す
     // 戻り先のマスはウサギが乗るので alive は false のまま
     await this.scene.rewindTo(prev.cur, fromId);
 
     this.cur = prev.cur;
-    this.count = prev.count;
     this.state = 'playing';
     this._updateHUD();
     this._updateReachable();
@@ -477,8 +544,8 @@ export class Game {
 
   useHint() {
     if (this.state !== 'playing') return;
-    if (!this.stock.hint) {
-      this._toast('ヒントがありません');
+    if (this.carrots < COST_HINT) {
+      this._toast(`ニンジンが足りません（ヒントは${COST_HINT}本）`);
       return;
     }
     const path = findSolution(this.level, this.alive, this.cur);
@@ -486,7 +553,7 @@ export class Game {
       this._toast('この状態ではクリアできません。まきもどしを使おう！');
       return;
     }
-    this.stock.hint--;
+    this.carrots -= COST_HINT;
     this.sfx.hint();
     this.scene.showHint(path[0]);
     this._updateHUD();
@@ -497,7 +564,7 @@ export class Game {
     try {
       localStorage.setItem(
         SAVE_KEY,
-        JSON.stringify({ seed: this.seed, stage, stock: this.stock })
+        JSON.stringify({ seed: this.seed, stage, score: this.score })
       );
     } catch (e) {}
   }
@@ -518,7 +585,7 @@ export class Game {
     try {
       localStorage.setItem(
         SAVE_KEY + '_opt',
-        JSON.stringify({ sound: this.sfx.enabled })
+        JSON.stringify({ sound: this.sfx.enabled, hiscore: this.hiscore })
       );
     } catch (e) {}
   }
@@ -526,7 +593,11 @@ export class Game {
   _loadSettings() {
     try {
       const raw = localStorage.getItem(SAVE_KEY + '_opt');
-      if (raw) this.sfx.enabled = JSON.parse(raw).sound !== false;
+      if (raw) {
+        const d = JSON.parse(raw);
+        this.sfx.enabled = d.sound !== false;
+        this.hiscore = d.hiscore || 0;
+      }
     } catch (e) {}
     $('btn-sound').classList.toggle('on', this.sfx.enabled);
     $('btn-sound').textContent = this.sfx.enabled ? '♪' : '×';
