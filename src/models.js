@@ -372,6 +372,7 @@ export function makeTerrain(heights) {
   const g = new THREE.Group();
   const c = (GRID - 1) / 2;
   const sideMat = mat(TERRACE_SIDE);
+  const gridVerts = [];
   for (let x = 0; x < GRID; x++) {
     for (let y = 0; y < GRID; y++) {
       const lvl = heights[x][y];
@@ -391,7 +392,33 @@ export function makeTerrain(heights) {
       box.castShadow = true;
       box.receiveShadow = true;
       g.add(box);
+
+      // 段の上面にもマス目の線を描く（平地のグリッドと同じ見た目）
+      const gy = h + 0.012;
+      const x0 = x - c - 0.5;
+      const x1 = x - c + 0.5;
+      const z0 = y - c - 0.5;
+      const z1 = y - c + 0.5;
+      gridVerts.push(
+        x0, gy, z0, x1, gy, z0,
+        x1, gy, z0, x1, gy, z1,
+        x1, gy, z1, x0, gy, z1,
+        x0, gy, z1, x0, gy, z0
+      );
     }
+  }
+  if (gridVerts.length) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(gridVerts, 3));
+    const lines = new THREE.LineSegments(
+      geo,
+      new THREE.LineBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.25,
+      })
+    );
+    g.add(lines);
   }
   return g;
 }
