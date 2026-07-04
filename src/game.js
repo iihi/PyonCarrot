@@ -312,13 +312,52 @@ export class Game {
     this._save();
     this._updateHUD();
 
+    this._hideTutorial(false);
+
     // 白ウサギの登場シーン（操作キャラだと分かるように毎ステージ再生）
     this.state = 'busy';
     this.sfx.warp();
     this.scene.playEntrance().then(() => {
       this.state = 'playing';
       this._updateReachable();
+      this._maybeShowHeightTutorial();
     });
+  }
+
+  // ---------- 段差の初回チュートリアル ----------
+  // 段差のあるステージを初めて遊ぶとき、一番高いマスに吹き出しを出す。
+  // ウサギを動かしたら消えて、以降は表示しない。
+  _maybeShowHeightTutorial() {
+    try {
+      if (localStorage.getItem(SAVE_KEY + '_tut_h')) return;
+    } catch (e) {}
+    let anchor = null;
+    let best = 0;
+    for (const t of this.level.tiles) {
+      const h = this.level.heights[t.x][t.y];
+      if (h > best) {
+        best = h;
+        anchor = t;
+      }
+    }
+    if (!anchor) return; // 段差のないステージ
+    const el = $('tut-balloon');
+    const p = this.scene.projectToScreen(anchor.x, anchor.y, 1.5);
+    el.style.left = `${p.x}px`;
+    el.style.top = `${p.y}px`;
+    el.classList.remove('hidden');
+    this._tutShown = true;
+  }
+
+  _hideTutorial(learned) {
+    if (!this._tutShown) return;
+    $('tut-balloon').classList.add('hidden');
+    this._tutShown = false;
+    if (learned) {
+      try {
+        localStorage.setItem(SAVE_KEY + '_tut_h', '1');
+      } catch (e) {}
+    }
   }
 
   retryStage() {
@@ -358,6 +397,7 @@ export class Game {
     if (this.state !== 'playing') return;
     if (!this.reachable.includes(id)) return;
 
+    this._hideTutorial(true); // ウサギを動かしたら吹き出しは消える
     this.state = 'busy';
     this.scene.clearRings();
     this.scene.clearHint();

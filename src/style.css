@@ -379,6 +379,50 @@ body {
   border-color: var(--orange);
 }
 
+/* ---------- 段差チュートリアル吹き出し ---------- */
+#tut-balloon {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  background: #fff;
+  border: 3px solid var(--orange);
+  border-radius: 14px;
+  padding: 9px 13px;
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--brown);
+  text-align: center;
+  white-space: nowrap;
+  z-index: 15;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  animation: balloon-bob 1.6s ease-in-out infinite;
+}
+
+#tut-balloon b {
+  color: var(--orange-dark);
+}
+
+#tut-balloon::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -12px;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: var(--orange);
+}
+
+@keyframes balloon-bob {
+  0%,
+  100% {
+    transform: translate(-50%, -100%);
+  }
+  50% {
+    transform: translate(-50%, calc(-100% - 6px));
+  }
+}
+
 /* ---------- トースト ---------- */
 #toast {
   position: absolute;

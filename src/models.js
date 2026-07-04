@@ -1,5 +1,9 @@
 // ローポリ3Dモデルをコードで生成（外部アセット不要）
 import * as THREE from 'three';
+import { GRID } from './level.js';
+
+// 段差1レベルぶんの高さ(ワールド単位)。低めにして奥のマスが隠れにくいようにする
+export const HSTEP = 0.35;
 
 const FLAT = { flatShading: true };
 
@@ -356,6 +360,39 @@ export function makePickup(type) {
   m.position.y = 0.42; // ニンジンより低め（手前に置く前提）
   g.add(m);
   g.userData.spin = m;
+  return g;
+}
+
+// ---------- 段差地形（段々畑） ----------
+// 高さレベルごとに草の色を少し変えて、パッと見で段が分かるようにする
+const TERRACE_TOP = [0, 0x8fd465, 0x9cdb6f, 0xaae37b];
+const TERRACE_SIDE = 0x96683f;
+
+export function makeTerrain(heights) {
+  const g = new THREE.Group();
+  const c = (GRID - 1) / 2;
+  const sideMat = mat(TERRACE_SIDE);
+  for (let x = 0; x < GRID; x++) {
+    for (let y = 0; y < GRID; y++) {
+      const lvl = heights[x][y];
+      if (!lvl) continue;
+      const h = lvl * HSTEP;
+      const topMat = mat(TERRACE_TOP[Math.min(lvl, TERRACE_TOP.length - 1)]);
+      // 面ごとのマテリアル: [+x, -x, +y(上面), -y, +z, -z]
+      const box = new THREE.Mesh(new THREE.BoxGeometry(1, h, 1), [
+        sideMat,
+        sideMat,
+        topMat,
+        sideMat,
+        sideMat,
+        sideMat,
+      ]);
+      box.position.set(x - c, h / 2, y - c);
+      box.castShadow = true;
+      box.receiveShadow = true;
+      g.add(box);
+    }
+  }
   return g;
 }
 
