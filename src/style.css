@@ -223,14 +223,30 @@ body {
   }
 }
 
-/* HUDの🥕からダイアログへ飛ぶニンジン */
+/* HUDの🥕からスコアボードへ弧を描いて飛ぶニンジン */
 .fly-carrot {
   position: absolute;
   font-size: 20px;
   z-index: 40;
   pointer-events: none;
-  transition: transform 0.6s cubic-bezier(0.45, -0.15, 0.85, 0.55),
-    opacity 0.6s ease-out;
+}
+
+/* 🥕が着地したとき数字がプルンと弾む */
+.sb-bump {
+  display: inline-block;
+  animation: sb-bump-pop 0.22s ease-out;
+}
+
+@keyframes sb-bump-pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.35);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 /* ---------- ニンジン獲得ポップ ---------- */

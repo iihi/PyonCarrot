@@ -597,6 +597,7 @@ export class Game {
     this._seqTimers = null;
     this._countUpStop = true;
     this._finishClearSeq = null;
+    document.querySelectorAll('.fly-carrot').forEach((e) => e.remove());
   }
 
   // 残ニンジンのカウントアップ(HUD側はカウントダウン)
@@ -616,28 +617,59 @@ export class Game {
     requestAnimationFrame(tick);
   }
 
-  // HUDの🥕チップからダイアログのニンジン行へ🥕が飛んでいく
+  // HUDの🥕チップからスコアボードのニンジン行へ、🥕が弧を描いて集まってくる
   _flyCarrots(n) {
     if (n <= 0) return;
     const wrap = $('game-wrap');
     const wr = wrap.getBoundingClientRect();
     const s = $('hud-count').getBoundingClientRect();
-    const dRect = $('sb-carrots').getBoundingClientRect();
-    const count = Math.min(6, n);
+    const dRect = $('sb-carrots-n').getBoundingClientRect();
+    const sx = s.left + s.width / 2 - wr.left;
+    const sy = s.top + s.height / 2 - wr.top;
+    const dx = dRect.left + dRect.width / 2 - wr.left;
+    const dy = dRect.top + dRect.height / 2 - wr.top;
+    const count = Math.min(10, n);
+    const flightDur = 480;
+
     for (let i = 0; i < count; i++) {
       const el = document.createElement('div');
       el.className = 'fly-carrot';
       el.textContent = '🥕';
-      el.style.left = `${s.left + s.width / 2 - wr.left}px`;
-      el.style.top = `${s.top + s.height / 2 - wr.top}px`;
+      el.style.left = `${sx}px`;
+      el.style.top = `${sy}px`;
+      el.style.transform = 'translate(-50%, -50%)';
       wrap.appendChild(el);
-      const dx = dRect.left + dRect.width / 2 - (s.left + s.width / 2);
-      const dy = dRect.top + dRect.height / 2 - (s.top + s.height / 2);
-      setTimeout(() => {
-        el.style.transform = `translate(${dx}px, ${dy}px) scale(0.5)`;
-        el.style.opacity = '0.1';
-      }, 40 + i * 110);
-      setTimeout(() => el.remove(), 850 + i * 110);
+      // 少し横へ膨らむ制御点で弧を描く（1匹ずつ膨らみを変える）
+      const cx = (sx + dx) / 2 - 60 - (i % 3) * 25;
+      const cy = (sy + dy) / 2 - 20 + (i % 2) * 30;
+      const t0 = performance.now() + i * 70;
+
+      const fly = (now) => {
+        if (!el.isConnected && now > t0) return;
+        const k = (now - t0) / flightDur;
+        if (k < 0) {
+          requestAnimationFrame(fly);
+          return;
+        }
+        if (k >= 1) {
+          el.remove();
+          // 着地で数字がプルンと弾む
+          const target = $('sb-carrots-n').parentElement;
+          target.classList.remove('sb-bump');
+          void target.offsetWidth; // アニメ再生し直しのためのリフロー
+          target.classList.add('sb-bump');
+          return;
+        }
+        // 2次ベジェ
+        const u = 1 - k;
+        const x = u * u * sx + 2 * u * k * cx + k * k * dx;
+        const y = u * u * sy + 2 * u * k * cy + k * k * dy;
+        el.style.left = `${x}px`;
+        el.style.top = `${y}px`;
+        el.style.transform = `translate(-50%, -50%) scale(${1 - 0.35 * k}) rotate(${k * 220}deg)`;
+        requestAnimationFrame(fly);
+      };
+      requestAnimationFrame(fly);
     }
   }
 
