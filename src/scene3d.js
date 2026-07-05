@@ -504,6 +504,7 @@ export class GameScene {
   }
 
   // ヒント: 対象の黄色リングを「白フチ付きピンク」に差し替える
+  // (時間では消えず、プレイヤーが移動するまで表示され続ける)
   showHint(target) {
     this.clearHint();
     const entry = this.rings.find((r) => r.id === target);
@@ -514,7 +515,6 @@ export class GameScene {
       target === 'goal' ? this.goalMesh : this.tileMeshes[target].group;
     parent.add(marker);
     this.hintMarker = marker;
-    setTimeout(() => this.clearHint(), 3500);
   }
 
   clearHint() {

@@ -390,20 +390,39 @@ export class Game {
     try {
       if (localStorage.getItem(SAVE_KEY + '_tut_h')) return;
     } catch (e) {}
-    let anchor = null;
-    let best = 0;
-    for (const t of this.level.tiles) {
-      const h = this.level.heights[t.x][t.y];
-      if (h > best) {
-        best = h;
-        anchor = t;
-      }
+    // 段差のあるマス全てを候補にする
+    const cands = this.level.tiles.filter(
+      (t) => this.level.heights[t.x][t.y] > 0
+    );
+    if (!cands.length) return; // 段差のないステージ
+
+    const cw = this.scene.canvas.clientWidth;
+    // 避けたい場所: プレイヤーうさぎ・次に飛べるマス
+    const cur = this.level.tiles[this.cur];
+    const avoid = [this.scene.projectToScreen(cur.x, cur.y, 0.6)];
+    for (const id of this.reachable || []) {
+      const t = id === 'goal' ? this.level.goal : this.level.tiles[id];
+      avoid.push(this.scene.projectToScreen(t.x, t.y, 0.4));
     }
-    if (!anchor) return; // 段差のないステージ
+
+    // 吹き出し(幅約240px・高さ約90px)の中心が避けたい点から遠い候補を選ぶ
+    let best = null;
+    for (const t of cands) {
+      const p = this.scene.projectToScreen(t.x, t.y, 1.5);
+      const bx = Math.min(Math.max(p.x, 132), cw - 132); // 画面内に収める
+      const by = p.y - 52;
+      let pen = 0;
+      if (p.y - 110 < 0) pen += 500; // 画面上にはみ出す
+      for (const a of avoid) {
+        pen += Math.max(0, 175 - Math.hypot(a.x - bx, a.y - by)) * 3;
+      }
+      pen -= this.level.heights[t.x][t.y] * 20; // 同条件なら高いマス優先
+      if (!best || pen < best.pen) best = { pen, x: bx, y: p.y };
+    }
+
     const el = $('tut-balloon');
-    const p = this.scene.projectToScreen(anchor.x, anchor.y, 1.5);
-    el.style.left = `${p.x}px`;
-    el.style.top = `${p.y}px`;
+    el.style.left = `${best.x}px`;
+    el.style.top = `${best.y}px`;
     el.classList.remove('hidden');
     this._tutShown = true;
   }
