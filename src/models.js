@@ -316,11 +316,8 @@ export function makeGoal() {
   g.add(flag);
   g.userData.flag = flag;
 
-  // 常時ゆっくり明滅する金のリング
-  const glow = makeRing(0xffd24a);
-  glow.scale.setScalar(1.12);
-  g.add(glow);
-  g.userData.glow = glow;
+  // ※常時明滅リングは「主人公と誤認しやすい」FBを受けて廃止。
+  //   行けるようになった時だけ点滅リングが出る。
 
   // ピンクのウサギが待っている
   const bunny = makeGoalRabbit();
@@ -509,4 +506,27 @@ export function makeRing(color = 0xfff05e) {
   ring.rotation.x = -Math.PI / 2;
   ring.position.y = 0.02;
   return ring;
+}
+
+// ---------- ヒントリング（白フチ付きピンク。緑の地面でも黄リングと見分けやすい） ----------
+export function makeHintRing() {
+  const g = new THREE.Group();
+  const flat = (r0, r1, color, y) => {
+    const m = new THREE.Mesh(
+      new THREE.RingGeometry(r0, r1, 24),
+      new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.95,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      })
+    );
+    m.rotation.x = -Math.PI / 2;
+    m.position.y = y;
+    return m;
+  };
+  g.add(flat(0.44, 0.68, 0xffffff, 0.024)); // 白フチ(下)
+  g.add(flat(0.485, 0.635, 0xff4f9e, 0.03)); // ピンク(上)
+  return g;
 }

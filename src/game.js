@@ -15,6 +15,7 @@ const SAVE_KEY = 'pyoncarrot_save_v1';
 const COST_REWIND = 3; // まきもどしのニンジン消費
 const COST_HINT = 5; // ヒントのニンジン消費
 const SCORE_PER_CARROT = 10; // 残ニンジン1本あたりのスコア
+const NO_HINT_BONUS = 100; // ヒント未使用クリアのボーナス
 const scoreBase = (stage) => 100 + 20 * Math.min(stage, 30); // クリア基礎スコア(30で頭打ち)
 const retryMult = (r) => (r === 0 ? 1.5 : r >= 3 ? 0.5 : 1.0); // リトライ倍率
 
@@ -100,11 +101,18 @@ export class Game {
     };
     $('btn-next').onclick = () => {
       this.sfx.click();
+      this._cancelClearSeq();
       this.stage++;
       this.retryCount = 0;
       this._hide('modal-clear');
       this.startStage();
     };
+    // 演出中にダイアログをタップしたら最後まで一気に表示
+    $('modal-clear').addEventListener('click', (e) => {
+      if (e.target.id !== 'btn-next' && this._finishClearSeq) {
+        this._finishClearSeq();
+      }
+    });
     $('btn-retry-over').onclick = () => {
       this.sfx.click();
       this._hide('modal-over');
@@ -320,6 +328,7 @@ export class Game {
     this.alive = this.level.tiles.map((_, i) => i !== 0);
     this.cur = 0;
     this.carrots = 0; // ニンジンは持ち越さない
+    this.hintsUsed = 0;
     this.history = [];
 
     this._hide('screen-title');
@@ -477,39 +486,159 @@ export class Game {
     this.scene.celebrate();
     this.sfx.clear();
 
-    // スコア計算: (基礎 + 残ニンジン×10) × リトライ倍率
+    // スコア計算: (基礎 + 残ニンジン×10 + ノーヒントボーナス) × リトライ倍率
     const base = scoreBase(this.stage);
     const carrotBonus = this.carrots * SCORE_PER_CARROT;
+    const noHint = this.hintsUsed === 0 ? NO_HINT_BONUS : 0;
     const mult = retryMult(this.retryCount);
-    const gain = Math.round((base + carrotBonus) * mult);
+    const gain = Math.round((base + carrotBonus + noHint) * mult);
     this.score += gain;
     if (this.score > this.hiscore) {
       this.hiscore = this.score;
       this._saveSettings();
     }
-    this._updateHUD();
 
-    // クリアダイアログの内訳表示
     $('clear-stage').textContent = this.stage;
-    $('sb-base').textContent = `+${fmt(base)}`;
-    $('sb-carrots-n').textContent = this.carrots;
-    $('sb-carrots').textContent = `+${fmt(carrotBonus)}`;
-    const multRow = $('sb-mult-row');
-    if (mult !== 1.0) {
-      multRow.classList.remove('hidden');
-      $('sb-mult-label').textContent =
-        mult > 1 ? 'ノーリトライボーナス' : `リトライ${this.retryCount}回`;
-      $('sb-mult').textContent = `×${mult}`;
-    } else {
-      multRow.classList.add('hidden');
-    }
-    $('sb-total').textContent = `+${fmt(gain)}`;
-    $('sb-cum').textContent = fmt(this.score);
-
     // 次ステージを先にセーブ（途中で閉じても続きから遊べる）
     this._save(this.stage + 1);
     // 見つめ合い→一緒に喜ぶ演出が見えてからダイアログを出す
-    setTimeout(() => this._show('modal-clear'), 1500);
+    setTimeout(() => {
+      if (this.state !== 'clear') return;
+      this._show('modal-clear');
+      this._playClearSequence({ base, carrotBonus, noHint, mult, gain });
+    }, 1500);
+  }
+
+  // クリアの内訳を1行ずつ「ドンッ」と見せる演出
+  _playClearSequence(d) {
+    this._cancelClearSeq();
+    const timers = (this._seqTimers = []);
+    const later = (ms, fn) => timers.push(setTimeout(fn, ms));
+
+    const rows = {
+      base: $('sb-base-row'),
+      carrots: $('sb-carrots-row'),
+      nohint: $('sb-nohint-row'),
+      mult: $('sb-mult-row'),
+      total: $('sb-total-row'),
+      cum: $('sb-cum-row'),
+    };
+    // 出ない行は非表示、出る行は「待機」状態に
+    rows.nohint.classList.toggle('hidden', !d.noHint);
+    rows.mult.classList.toggle('hidden', d.mult === 1);
+    for (const r of Object.values(rows)) {
+      r.classList.remove('sb-pop');
+      if (!r.classList.contains('hidden')) r.classList.add('sb-wait');
+    }
+
+    // 値をセット（ニンジンはカウントアップで後から入る）
+    $('sb-base').textContent = `+${fmt(d.base)}`;
+    $('sb-carrots-n').textContent = 0;
+    $('sb-carrots').textContent = '+0';
+    $('sb-nohint').textContent = `+${fmt(NO_HINT_BONUS)}`;
+    if (d.mult !== 1) {
+      $('sb-mult-label').textContent =
+        d.mult > 1 ? 'ノーリトライボーナス' : `リトライ${this.retryCount}回`;
+      $('sb-mult').textContent = `×${d.mult}`;
+    }
+    $('sb-total').textContent = `+${fmt(d.gain)}`;
+    $('sb-cum').textContent = fmt(this.score);
+
+    const pop = (row) => {
+      row.classList.remove('sb-wait');
+      row.classList.add('sb-pop');
+      this.sfx.thud();
+    };
+
+    later(200, () => pop(rows.base));
+    later(600, () => {
+      pop(rows.carrots);
+      this._flyCarrots(this.carrots);
+      this._countUpCarrots(this.carrots);
+    });
+    let t = 1750;
+    if (d.noHint) {
+      later(t, () => pop(rows.nohint));
+      t += 380;
+    }
+    if (d.mult !== 1) {
+      later(t, () => pop(rows.mult));
+      t += 380;
+    }
+    later(t + 120, () => {
+      pop(rows.total);
+      this.sfx.pickup();
+    });
+    later(t + 500, () => {
+      pop(rows.cum);
+      $('hud-score').textContent = fmt(this.score);
+      this._finishClearSeq = null;
+    });
+
+    // タップで最後まで一気に表示
+    this._finishClearSeq = () => {
+      this._cancelClearSeq();
+      for (const r of Object.values(rows)) {
+        if (!r.classList.contains('hidden')) {
+          r.classList.remove('sb-wait');
+          r.classList.add('sb-pop');
+        }
+      }
+      $('sb-carrots-n').textContent = this.carrots;
+      $('sb-carrots').textContent = `+${fmt(d.carrotBonus)}`;
+      $('hud-count').textContent = 0;
+      $('hud-score').textContent = fmt(this.score);
+      this._finishClearSeq = null;
+    };
+  }
+
+  _cancelClearSeq() {
+    if (this._seqTimers) for (const t of this._seqTimers) clearTimeout(t);
+    this._seqTimers = null;
+    this._countUpStop = true;
+    this._finishClearSeq = null;
+  }
+
+  // 残ニンジンのカウントアップ(HUD側はカウントダウン)
+  _countUpCarrots(total) {
+    this._countUpStop = false;
+    const dur = 900;
+    const start = performance.now();
+    const tick = (now) => {
+      if (this._countUpStop) return;
+      const k = Math.min(1, (now - start) / dur);
+      const n = Math.round(total * k);
+      $('sb-carrots-n').textContent = n;
+      $('sb-carrots').textContent = `+${fmt(n * SCORE_PER_CARROT)}`;
+      $('hud-count').textContent = total - n;
+      if (k < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  // HUDの🥕チップからダイアログのニンジン行へ🥕が飛んでいく
+  _flyCarrots(n) {
+    if (n <= 0) return;
+    const wrap = $('game-wrap');
+    const wr = wrap.getBoundingClientRect();
+    const s = $('hud-count').getBoundingClientRect();
+    const dRect = $('sb-carrots').getBoundingClientRect();
+    const count = Math.min(6, n);
+    for (let i = 0; i < count; i++) {
+      const el = document.createElement('div');
+      el.className = 'fly-carrot';
+      el.textContent = '🥕';
+      el.style.left = `${s.left + s.width / 2 - wr.left}px`;
+      el.style.top = `${s.top + s.height / 2 - wr.top}px`;
+      wrap.appendChild(el);
+      const dx = dRect.left + dRect.width / 2 - (s.left + s.width / 2);
+      const dy = dRect.top + dRect.height / 2 - (s.top + s.height / 2);
+      setTimeout(() => {
+        el.style.transform = `translate(${dx}px, ${dy}px) scale(0.5)`;
+        el.style.opacity = '0.1';
+      }, 40 + i * 110);
+      setTimeout(() => el.remove(), 850 + i * 110);
+    }
   }
 
   // ---------- アイテム（ニンジン消費） ----------
@@ -554,6 +683,7 @@ export class Game {
       return;
     }
     this.carrots -= COST_HINT;
+    this.hintsUsed++;
     this.sfx.hint();
     this.scene.showHint(path[0]);
     this._updateHUD();

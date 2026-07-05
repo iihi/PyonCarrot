@@ -90,11 +90,12 @@
         <h2 class="clear-title">🎉 クリア！ 🎉</h2>
         <p class="modal-text">ステージ <b id="clear-stage">1</b> クリア！</p>
         <div class="score-breakdown">
-          <div class="sb-row">クリアボーナス <b id="sb-base">+100</b></div>
-          <div class="sb-row"><span>のこりニンジン <span id="sb-carrots-n">0</span>本</span> <b id="sb-carrots">+0</b></div>
-          <div class="sb-row hidden" id="sb-mult-row"><span id="sb-mult-label">ノーリトライボーナス</span> <b id="sb-mult">×1.5</b></div>
-          <div class="sb-row sb-total">スコア <b id="sb-total">+150</b></div>
-          <div class="sb-row sb-cum">ごうけい <b id="sb-cum">150</b></div>
+          <div class="sb-row" id="sb-base-row">クリアボーナス <b id="sb-base">+100</b></div>
+          <div class="sb-row" id="sb-carrots-row"><span>のこりニンジン <span id="sb-carrots-n">0</span>本</span> <b id="sb-carrots">+0</b></div>
+          <div class="sb-row" id="sb-nohint-row">ノーヒントボーナス <b id="sb-nohint">+100</b></div>
+          <div class="sb-row" id="sb-mult-row"><span id="sb-mult-label">ノーリトライボーナス</span> <b id="sb-mult">×1.5</b></div>
+          <div class="sb-row sb-total" id="sb-total-row">スコア <b id="sb-total">+150</b></div>
+          <div class="sb-row sb-cum" id="sb-cum-row">ごうけい <b id="sb-cum">150</b></div>
         </div>
         <button id="btn-next" class="big-btn primary">つぎのステージへ</button>
       </div>

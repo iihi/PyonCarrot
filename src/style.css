@@ -199,6 +199,40 @@ body {
   color: var(--orange-dark);
 }
 
+/* 演出用: 待機中は場所だけ確保して見えない */
+.sb-row.sb-wait {
+  visibility: hidden;
+}
+
+/* 「ドンッ」と出る */
+.sb-row.sb-pop {
+  animation: sb-slam 0.28s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+
+@keyframes sb-slam {
+  0% {
+    opacity: 0;
+    transform: scale(1.7);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(0.96);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* HUDの🥕からダイアログへ飛ぶニンジン */
+.fly-carrot {
+  position: absolute;
+  font-size: 20px;
+  z-index: 40;
+  pointer-events: none;
+  transition: transform 0.6s cubic-bezier(0.45, -0.15, 0.85, 0.55),
+    opacity 0.6s ease-out;
+}
+
 /* ---------- ニンジン獲得ポップ ---------- */
 .carrot-pop {
   position: absolute;

@@ -8,6 +8,7 @@ import {
   makeIsland,
   makeNumberSprite,
   makeRing,
+  makeHintRing,
   makeTerrain,
   HSTEP,
 } from './models.js';
@@ -486,7 +487,8 @@ export class GameScene {
 
   // ---------- 点滅表示 ----------
   clearRings() {
-    for (const r of this.rings) r.parent && r.parent.remove(r);
+    this.clearHint();
+    for (const r of this.rings) r.mesh.parent && r.mesh.parent.remove(r.mesh);
     this.rings = [];
   }
 
@@ -497,18 +499,21 @@ export class GameScene {
       const parent =
         item === 'goal' ? this.goalMesh : this.tileMeshes[item].group;
       parent.add(ring);
-      this.rings.push(ring);
+      this.rings.push({ mesh: ring, id: item });
     }
   }
 
+  // ヒント: 対象の黄色リングを「白フチ付きピンク」に差し替える
   showHint(target) {
     this.clearHint();
-    const ring = makeRing(0x59c2ff);
-    ring.scale.setScalar(0.85);
+    const entry = this.rings.find((r) => r.id === target);
+    if (entry) entry.mesh.visible = false; // 黄リングを一旦隠す
+    this._hintHidden = entry || null;
+    const marker = makeHintRing();
     const parent =
       target === 'goal' ? this.goalMesh : this.tileMeshes[target].group;
-    parent.add(ring);
-    this.hintMarker = ring;
+    parent.add(marker);
+    this.hintMarker = marker;
     setTimeout(() => this.clearHint(), 3500);
   }
 
@@ -516,6 +521,10 @@ export class GameScene {
     if (this.hintMarker) {
       this.hintMarker.parent && this.hintMarker.parent.remove(this.hintMarker);
       this.hintMarker = null;
+    }
+    if (this._hintHidden) {
+      this._hintHidden.mesh.visible = true; // 黄リングを戻す
+      this._hintHidden = null;
     }
   }
 
@@ -801,11 +810,13 @@ export class GameScene {
     // 点滅リング
     const pulse = 0.55 + 0.45 * Math.sin(this.time * 5);
     for (const r of this.rings) {
-      r.material.opacity = 0.35 + 0.55 * pulse;
-      r.scale.setScalar(1 + 0.08 * pulse);
+      r.mesh.material.opacity = 0.35 + 0.55 * pulse;
+      r.mesh.scale.setScalar(1 + 0.08 * pulse);
     }
     if (this.hintMarker) {
-      this.hintMarker.material.opacity = 0.5 + 0.5 * Math.sin(this.time * 8);
+      const o = 0.55 + 0.45 * Math.sin(this.time * 8);
+      for (const m of this.hintMarker.children) m.material.opacity = o;
+      this.hintMarker.scale.setScalar(1 + 0.06 * pulse);
     }
 
     // ゴールのピンクウサギの待機モーション
@@ -838,12 +849,7 @@ export class GameScene {
       }
     }
     if (this.goalMesh) {
-      // 金リングの明滅と旗の揺れ
-      const glow = this.goalMesh.userData.glow;
-      if (glow) {
-        glow.material.opacity = 0.35 + 0.3 * Math.sin(this.time * 3);
-        glow.scale.setScalar(1.12 + 0.06 * Math.sin(this.time * 3));
-      }
+      // 旗の揺れ
       const flag = this.goalMesh.userData.flag;
       if (flag) flag.rotation.y = Math.PI / 4 + Math.sin(this.time * 4) * 0.18;
     }
