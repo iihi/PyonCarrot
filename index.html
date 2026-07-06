@@ -74,7 +74,7 @@
           <li>🕳️ 飛び立った畑は消えます。ルートは自由！<b>すきなだけニンジンを集めて</b>、お花の台座で待つ<b>ピンクのウサギ</b>のところへ行けばクリア。うごけなくなったらゲームオーバー。</li>
           <li>🥕 マスに乗るとニンジンを食べて、数字のぶんだけ<b>ニンジンがたまる</b>よ。✨の<b>大ニンジン</b>は1本で<b>5本分</b>！</li>
           <li>⛰️ <b>段差</b>：高い所へは1段ごとにパワーが<b>1つ多く</b>必要。降りるときは1段ごとに<b>1マス遠くへ</b>。出発と着地より高い地形は飛び越えられない。</li>
-          <li>🦘 <b>ジャンプ台</b>のマスからは<b>2マス遠くへ</b>飛べる ／ ❄️ <b>氷</b>のマスに乗ると、進んだ方向の次のマスまで<b>すべる</b>（すべったマスも食べる）。</li>
+          <li>🦘 <b>ジャンプ台</b>のマスからは<b>2マス遠くへ</b>飛べる ／ 🛒 <b>トロッコ</b>のマスに乗ると、レールの向きの先のマスまで<b>運ばれる</b>（通ったマスも食べる）。</li>
           <li>★ <b>まきもどし</b>（1手前にもどる）＝ニンジン3本 ／ 💡 <b>ヒント</b>（次の一手を光らせる）＝ニンジン5本。</li>
           <li>🏆 スコアは<b>のこしたニンジン×10点</b>＋ボーナス：<b>全マス回収+300</b>、<b>最短クリア+300</b>、<b>ノーヒント+100</b>。リトライ0回なら<b>×1.5</b>（3回以上は×0.5…）。じっくり集めるか、駆け抜けるか、きみしだい！</li>
           <li>📤 下の「コード」ボタンでステージコードを表示・コピー。コード入力すれば同じステージを共有・再開できます。</li>
@@ -136,6 +136,31 @@
     </div>
 
     <div id="toast" class="hidden"></div>
+
+    <!-- デバッグパネル(本番非表示: #debug ハッシュ か Dキー3連打で有効化) -->
+    <div id="debug-panel" class="hidden">
+      <div class="dbg-row">
+        <span class="dbg-title">DEBUG</span>
+        <button id="dbg-close" class="dbg-btn">×</button>
+      </div>
+      <div class="dbg-row">
+        <input id="dbg-stage" type="number" min="1" max="999" placeholder="stage" />
+        <button id="dbg-go" class="dbg-btn">GO</button>
+      </div>
+      <div class="dbg-row">
+        <button id="dbg-prev" class="dbg-btn">◀ -1</button>
+        <button id="dbg-next" class="dbg-btn">+1 ▶</button>
+        <button id="dbg-skip10" class="dbg-btn">+10 ⏩</button>
+      </div>
+      <div class="dbg-row">
+        <button id="dbg-solve" class="dbg-btn wide">オートクリア</button>
+      </div>
+      <div class="dbg-row">
+        <input id="dbg-seed" type="number" placeholder="seed(任意)" />
+        <button id="dbg-seed-go" class="dbg-btn">seed適用</button>
+      </div>
+      <div id="dbg-info" class="dbg-info"></div>
+    </div>
   </div>
   <script type="module" src="/src/main.js"></script>
 </body>

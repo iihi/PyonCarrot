@@ -725,10 +725,11 @@ export class GameScene {
     }, null, `tile${idx}`);
   }
 
-  // 氷スライド: 食べたマス列に沿ってツーッと滑る(通過したマスは沈む)
+  // トロッコ移動: 食べたマス列に沿って荷車で運ばれる。
+  // 乗ったトロッコマスの荷車がウサギを乗せて次のマスへ走り、着いたら荷車が壊れてマスが沈む。
   slideAlong(eaten) {
     return new Promise((resolve) => {
-      this.killTweens('rabbit'); // 着地バウンドを打ち切ってスライドへ
+      this.killTweens('rabbit'); // 着地バウンドを打ち切ってトロッコへ
       let delay = 0;
       for (let k = 1; k < eaten.length; k++) {
         const a = this.level.tiles[eaten[k - 1]];
@@ -736,15 +737,27 @@ export class GameScene {
         const p0 = this.worldPos(a.x, a.y, this._standY(a.x, a.y));
         const p1 = this.worldPos(b.x, b.y, this._standY(b.x, b.y));
         const dist = Math.abs(b.x - a.x) + Math.abs(b.y - a.y);
-        const dur = 0.1 + dist * 0.06;
+        const dur = 0.18 + dist * 0.11;
         const prevIdx = eaten[k - 1];
+        const cartTm = this.tileMeshes[prevIdx];
+        const rg = cartTm.group.userData.railGroup;
+        const cart = cartTm.group.userData.cart;
         const isLast = k === eaten.length - 1;
+        // レール+荷車の移動量(タイルグループのローカル空間 = ワールドと同スケール・無回転)
+        const cartDX = b.x - a.x;
+        const cartDZ = b.y - a.y;
+        this.rabbit.rotation.y = Math.atan2(p1.x - p0.x, p1.z - p0.z);
         this.tween(dur, delay, (t) => t, (t) => {
-          this.rabbit.position.lerpVectors(p0, p1, t);
-          // つるつる感: 低くかがんだまま
-          this.rabbit.scale.set(1.08, 0.85, 1.08);
+          // ゆるやかに加減速(トロッコが走る感じ)
+          const e = t * t * (3 - 2 * t);
+          this.rabbit.position.lerpVectors(p0, p1, e);
+          this.rabbit.position.y = p0.y + (p1.y - p0.y) * e + 0.06;
+          this.rabbit.scale.set(1, 1, 1);
+          // 荷車も一緒に走る(見た目で連れて行かれてる感)
+          if (rg) rg.position.set(cartDX * e, 0, cartDZ * e);
+          if (cart) for (const w of cart.userData.wheels || []) w.rotation.x -= 0.6;
         }, () => {
-          this._sinkTile(prevIdx); // 通過したマスは沈む
+          this._breakCart(prevIdx); // 荷車が壊れてマスが沈む
           if (isLast) {
             this.rabbit.scale.setScalar(1);
             this.rabbit.position.copy(p1);
@@ -755,6 +768,19 @@ export class GameScene {
       }
       if (eaten.length <= 1) resolve();
     });
+  }
+
+  // 荷車が壊れる演出 → マスを沈める
+  _breakCart(idx) {
+    const tm = this.tileMeshes[idx];
+    const rg = tm.group.userData.railGroup;
+    if (rg) {
+      this.tween(0.28, 0, easeOut, (k) => {
+        rg.scale.setScalar(Math.max(0.01, 1 - k));
+        rg.position.y = k * -0.3;
+      }, null, `cart${idx}`);
+    }
+    this._sinkTile(idx);
   }
 
   setOnSpring(v) {

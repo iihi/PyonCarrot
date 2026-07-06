@@ -41,6 +41,7 @@ export class Game {
 
     this.scene.onTileTap = (id) => this.tryMove(id);
     this._bindUI();
+    this._bindDebug();
     this._loadSettings();
     this._showTitle();
 
@@ -50,6 +51,84 @@ export class Game {
       () => this.sfx.unlock(),
       { once: true }
     );
+  }
+
+  // ---------- デバッグモード ----------
+  // 本番では非表示。有効化は URL に #debug を付けるか、Dキーを3回連打。
+  _bindDebug() {
+    const panel = $('debug-panel');
+    const enable = () => {
+      this._debug = true;
+      panel.classList.remove('hidden');
+      this._dbgUpdate();
+    };
+    if (location.hash.toLowerCase().includes('debug')) enable();
+
+    // Dキー3連打(1.2秒以内)で有効化
+    let taps = [];
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'd' || e.key === 'D') {
+        const now = performance.now();
+        taps = taps.filter((t) => now - t < 1200);
+        taps.push(now);
+        if (taps.length >= 3 && !this._debug) enable();
+      }
+    });
+
+    const jump = (stage) => {
+      if (!this._debug) return;
+      this.stage = Math.max(1, Math.min(999, stage));
+      if (!this.seed) this.seed = 1000 + Math.floor(Math.random() * 9000);
+      this.score = 0;
+      this.retryCount = 0;
+      this._hide('modal-clear');
+      this._hide('modal-over');
+      this._cancelClearSeq();
+      this.startStage();
+      this._dbgUpdate();
+    };
+
+    $('dbg-close').onclick = () => panel.classList.add('hidden');
+    $('dbg-go').onclick = () => {
+      const v = parseInt($('dbg-stage').value, 10);
+      if (v >= 1) jump(v);
+    };
+    $('dbg-prev').onclick = () => jump(this.stage - 1);
+    $('dbg-next').onclick = () => jump(this.stage + 1);
+    $('dbg-skip10').onclick = () => jump(this.stage + 10);
+    $('dbg-seed-go').onclick = () => {
+      const v = parseInt($('dbg-seed').value, 10);
+      if (v >= 1000 && v <= 9999) {
+        this.seed = v;
+        jump(this.stage);
+      }
+    };
+    $('dbg-solve').onclick = () => this._dbgAutoSolve();
+  }
+
+  _dbgUpdate() {
+    if (!this._debug) return;
+    const info = $('dbg-info');
+    if (this.level) {
+      info.textContent = `seed ${this.seed} / stage ${this.stage} / code ${makeCode(
+        this.seed,
+        this.stage
+      )} / minMoves ${this.level.minMoves}`;
+    }
+  }
+
+  // ヒント用ソルバーの経路をそのまま自動再生してクリアする
+  async _dbgAutoSolve() {
+    if (!this._debug || this.state !== 'playing') return;
+    let guard = 0;
+    while (this.state === 'playing' && guard++ < 60) {
+      const path = findSolution(this.level, this.alive, this.cur);
+      if (!path || !path.length) break;
+      const step = path[0];
+      if (!this.reachable.includes(step)) break;
+      await this.tryMove(step);
+      await new Promise((r) => setTimeout(r, 120));
+    }
   }
 
   // ---------- UI ----------
@@ -132,9 +211,12 @@ export class Game {
       this._save(); // 進行セーブも現ステージに巻き戻す
       this.startStage();
     };
-    // クリア後のコードコピー(難しかったステージの共有用)
-    $('btn-clear-copy').onclick = () =>
-      this._copyText(makeCode(this.seed, this.stage));
+    // クリア後のコード共有(難しかったステージの共有用): 下部と同じコードDLGを出す
+    $('btn-clear-copy').onclick = () => {
+      this.sfx.click();
+      $('share-code').textContent = makeCode(this.seed, this.stage);
+      this._show('modal-share');
+    };
     // 演出中にダイアログをタップしたら最後まで一気に表示
     $('modal-clear').addEventListener('click', (e) => {
       if (e.target.id !== 'btn-next' && this._finishClearSeq) {
@@ -371,6 +453,7 @@ export class Game {
     this.scene.setGridVisible(true);
     this._save();
     this._updateHUD();
+    this._dbgUpdate();
 
     this._hideTutorial(false);
 
@@ -421,7 +504,7 @@ export class Game {
   }
 
   // ---------- ギミックの初回チュートリアル吹き出し ----------
-  // 段差・ジャンプ台・氷が初めて登場するステージで、該当マスに吹き出しを出す。
+  // 段差・ジャンプ台・トロッコが初めて登場するステージで、該当マスに吹き出しを出す。
   // ウサギを動かしたら消えて、以降は表示しない。1ステージにつき1件（優先順）。
   _maybeShowGimmickTutorial() {
     const TUTS = [
@@ -438,10 +521,10 @@ export class Game {
         html: '🦘 <b>ジャンプ台</b>のマス！<br />ここから飛ぶと<b>2マス遠くまで</b>とべるよ',
       },
       {
-        flag: '_tut_ice',
-        pick: (t) => !!t.ice,
+        flag: '_tut_cart',
+        pick: (t) => !!t.cart,
         prefer: () => 0,
-        html: '❄️ <b>こおり</b>のマス！<br />乗るとすべって<b>次のマスまで</b>止まらないよ',
+        html: '🛒 <b>トロッコ</b>のマス！<br />乗るとレールの先の<br />マスまで<b>運ばれる</b>よ',
       },
     ];
 

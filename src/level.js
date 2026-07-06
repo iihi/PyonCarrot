@@ -8,8 +8,8 @@
 //
 // ギミック:
 //  - ジャンプ台(spring): そのマスから飛ぶときパワー+2
-//  - 氷(ice): 着地すると進行方向の次のマスまで滑る(滑ったマスも食べる)。氷が続く限り滑る
-//  - 大ニンジン(golden): 食べるとニンジン5本分
+//  - トロッコ(cart+rail): 着地するとレールの向きの先のマスまで運ばれる(乗ったマスも食べる)
+//  - 大ニンジン(golden): 食べると本数×5本分
 
 import { mixSeed, mulberry32 } from './rng.js';
 
@@ -23,13 +23,13 @@ export const GOLD_MULT = 5; // 大ニンジンは1本で5本分(獲得 = 本数 
 // ギミックの解禁ステージと出現率・上限
 const GOLD_STAGE = 3;
 const SPRING_STAGE = 4;
-const ICE_STAGE = 6;
+const CART_STAGE = 6;
 const P_GOLD = 0.08;
 const P_SPRING = 0.1;
-const P_ICE = 0.15;
+const P_CART = 0.15;
 const MAX_GOLD = 2;
 const MAX_SPRING = 3;
-const MAX_ICE_CHAINS = 3;
+const MAX_CARTS = 3;
 
 const DIRS = [
   [1, 0],
@@ -160,32 +160,31 @@ function canJump(level, from, tx, ty) {
   return !blockedPath(level.heights, from.x, from.y, tx, ty);
 }
 
-// ---------- 着地の解決(氷スライド) ----------
-// targetIdx に着地したあと、氷なら進行方向の次のマスへ滑り続ける。
+// ---------- 着地の解決(トロッコ) ----------
+// targetIdx に着地したあと、トロッコマスなら「レールの向き」の先にある
+// いちばん近いマスまで運ばれる(高低差は関係なし)。行き先がなければその場に留まる。
+// 運ばれた先もトロッコなら続けて乗る。
 // 返り値: { finalIdx, eaten } eatenは触れた順のマスindex(先頭=target)。全て消費される。
 function resolveMoveM(level, mask, fromIdx, targetIdx) {
-  const from = level.tiles[fromIdx];
-  const to = level.tiles[targetIdx];
-  const sx = Math.sign(to.x - from.x);
-  const sy = Math.sign(to.y - from.y);
   const eaten = [targetIdx];
   let cur = targetIdx;
   let guard = 0;
-  while (level.tiles[cur].ice && guard++ < 32) {
+  while (level.tiles[cur].cart && guard++ < 32) {
     const c = level.tiles[cur];
+    const [rx, ry] = c.rail;
     let best = null;
     for (let i = 0; i < level.tiles.length; i++) {
       if (!(mask & (1 << i))) continue;
-      if (eaten.includes(i)) continue;
+      if (i === fromIdx || eaten.includes(i)) continue;
       const t = level.tiles[i];
       const ddx = t.x - c.x;
       const ddy = t.y - c.y;
-      if (sx !== 0 && (ddy !== 0 || Math.sign(ddx) !== sx)) continue;
-      if (sy !== 0 && (ddx !== 0 || Math.sign(ddy) !== sy)) continue;
+      if (rx !== 0 && (ddy !== 0 || Math.sign(ddx) !== rx)) continue;
+      if (ry !== 0 && (ddx !== 0 || Math.sign(ddy) !== ry)) continue;
       const dist = Math.abs(ddx) + Math.abs(ddy);
       if (!best || dist < best.dist) best = { i, dist };
     }
-    if (!best) break; // 先にマスがなければ氷の上で止まる
+    if (!best) break; // レールの先にマスがなければトロッコは動かない
     eaten.push(best.i);
     cur = best.i;
   }
@@ -224,10 +223,10 @@ function tryGenerate(rand, n, seed, stage, heights) {
 
   const pGold = stage >= GOLD_STAGE ? P_GOLD : 0;
   const pSpring = stage >= SPRING_STAGE ? P_SPRING : 0;
-  const pIce = stage >= ICE_STAGE ? P_ICE : 0;
+  const pCart = stage >= CART_STAGE ? P_CART : 0;
   let golds = 0;
   let springs = 0;
-  let iceChains = 0;
+  let carts = 0;
 
   const rollFlags = (tile) => {
     if (springs < MAX_SPRING && rand() < pSpring) {
@@ -277,20 +276,20 @@ function tryGenerate(rand, n, seed, stage, heights) {
       break;
     }
 
-    // 氷チェーン: 着地マスを氷にして、同方向の先に滑り先マスを置く
-    let madeIce = false;
-    if (iceChains < MAX_ICE_CHAINS && tiles.length + 2 <= n && rand() < pIce) {
+    // トロッコ: 着地マスにレール(進行方向)とトロッコを置き、レールの先に行き先マスを置く
+    let madeCart = false;
+    if (carts < MAX_CARTS && tiles.length + 2 <= n && rand() < pCart) {
       const exts = [];
       for (let e = 1; e <= 3; e++) {
         const fx = o.nx + o.dx * e;
         const fy = o.ny + o.dy * e;
         if (!inGrid(fx, fy)) break;
-        if (occ.has(key(fx, fy))) break; // 間に既存マスがあると滑りが変わるので中止
+        if (occ.has(key(fx, fy))) break; // 間に既存マスがあると行き先が変わるので中止
         exts.push({ fx, fy });
       }
       if (exts.length) {
         const ext = exts[Math.floor(rand() * exts.length)];
-        // 間のセルに将来マスを置かないよう占有しておく(滑走路の確保)
+        // 間のセルに将来マスを置かないよう占有しておく(線路の確保)
         for (let e = 1; ; e++) {
           const mx = o.nx + o.dx * e;
           const my = o.ny + o.dy * e;
@@ -298,20 +297,26 @@ function tryGenerate(rand, n, seed, stage, heights) {
           occ.add(key(mx, my));
         }
         cur.value = o.need;
-        const iceTile = { x: o.nx, y: o.ny, value: 1 + Math.floor(rand() * 3), ice: true };
-        tiles.push(iceTile);
+        const cartTile = {
+          x: o.nx,
+          y: o.ny,
+          value: 1 + Math.floor(rand() * 3),
+          cart: true,
+          rail: [o.dx, o.dy],
+        };
+        tiles.push(cartTile);
         occ.add(key(o.nx, o.ny));
         const landTile = { x: ext.fx, y: ext.fy, value: 0 };
         rollFlags(landTile);
         tiles.push(landTile);
         occ.add(key(ext.fx, ext.fy));
         curIdx = tiles.length - 1;
-        iceChains++;
-        madeIce = true;
+        carts++;
+        madeCart = true;
       }
     }
 
-    if (!madeIce) {
+    if (!madeCart) {
       cur.value = o.need;
       const t = { x: o.nx, y: o.ny, value: 0 };
       rollFlags(t);

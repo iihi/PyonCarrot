@@ -175,22 +175,65 @@ export function makeTile(tile) {
     );
     g.add(band);
   }
-  // 氷マスは上面がつるっとした青
   const top = mesh(
     new THREE.CylinderGeometry(0.38, 0.41, 0.05, 7),
-    tile.ice
-      ? new THREE.MeshStandardMaterial({
-          color: 0xbfe9ff,
-          roughness: 0.15,
-          metalness: 0.15,
-          flatShading: true,
-        })
-      : mat(0xb98a5e),
+    mat(0xb98a5e),
     0,
     0.19,
     0
   );
   g.add(top);
+
+  // トロッコマス: レール(方向つき)+荷車。乗るとレールの先まで運ばれる
+  if (tile.cart) {
+    const railGroup = new THREE.Group();
+    const railMat = mat(0x8a8f98, { roughness: 0.4, metalness: 0.4 });
+    const tieMat = mat(0x6e4a2a);
+    // 枕木×3
+    for (let i = -1; i <= 1; i++) {
+      const tie = mesh(new THREE.BoxGeometry(0.5, 0.03, 0.1), tieMat, 0, 0.22, i * 0.3);
+      railGroup.add(tie);
+    }
+    // レール×2 (z方向に伸ばして向きはグループ回転で合わせる)
+    for (const s of [-1, 1]) {
+      const rail = mesh(new THREE.BoxGeometry(0.05, 0.035, 0.95), railMat, s * 0.16, 0.245, 0);
+      railGroup.add(rail);
+    }
+    // 進行方向の矢印(黄色い小さな三角)
+    const arrow = mesh(new THREE.ConeGeometry(0.07, 0.16, 4), mat(0xffd24a), 0, 0.235, 0.42);
+    arrow.rotation.x = Math.PI / 2;
+    railGroup.add(arrow);
+
+    // 荷車(木の箱+車輪)
+    const cart = new THREE.Group();
+    const body = mesh(new THREE.BoxGeometry(0.3, 0.16, 0.4), mat(0x9c6033), 0, 0.36, 0);
+    cart.add(body);
+    const inner = mesh(new THREE.BoxGeometry(0.24, 0.06, 0.34), mat(0x5f3a1e), 0, 0.42, 0);
+    cart.add(inner);
+    const wheels = [];
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        const w = mesh(
+          new THREE.CylinderGeometry(0.06, 0.06, 0.04, 8),
+          mat(0x3a3a3a, { roughness: 0.5 }),
+          sx * 0.17,
+          0.28,
+          sz * 0.13
+        );
+        w.rotation.z = Math.PI / 2;
+        wheels.push(w);
+        cart.add(w);
+      }
+    }
+    cart.userData.wheels = wheels;
+    railGroup.add(cart);
+
+    // レールの向き = tile.rail
+    railGroup.rotation.y = Math.atan2(tile.rail[0], tile.rail[1]);
+    g.add(railGroup);
+    g.userData.cart = cart;
+    g.userData.railGroup = railGroup;
+  }
 
   const carrots = new THREE.Group();
   for (const o of CARROT_LAYOUT[value] || CARROT_LAYOUT[1]) {
@@ -208,6 +251,11 @@ export function makeTile(tile) {
   }
   // 数字バッジと被らないよう、全体を画面の少し下(手前)へずらす
   carrots.position.set(FWD_AXIS.x * 0.1, 0, FWD_AXIS.z * 0.1);
+  // トロッコマスは荷車と重ならないよう小さめ・さらに手前へ
+  if (tile.cart) {
+    carrots.scale.multiplyScalar(0.72);
+    carrots.position.set(FWD_AXIS.x * 0.27, 0, FWD_AXIS.z * 0.27);
+  }
   g.add(carrots);
   g.userData.carrots = carrots;
 
@@ -358,8 +406,9 @@ export function makeGoal() {
 // ---------- 段差地形（段々畑） ----------
 // 高さレベルごとに草の明るさを一段ずつ変えて、パッと見で段数が分かるようにする
 // (島の草 0x82ca5c → 1段 → 2段 → 3段 と上がるほど明るい緑)
-const TERRACE_TOP = [0, 0x8cd05e, 0xa2de6e, 0xbaec82];
-const TERRACE_SIDE = 0x96683f;
+// 島の草(0x82ca5c)から一段ずつはっきり明るく＆黄みを増やして、段数を見分けられるように
+const TERRACE_TOP = [0, 0x9ad35f, 0xbfe27f, 0xe2f0a2];
+const TERRACE_SIDE = 0x8a5a30;
 
 export function makeTerrain(heights) {
   const g = new THREE.Group();
