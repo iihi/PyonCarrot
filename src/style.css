@@ -470,8 +470,21 @@ body {
   font-family: inherit;
   color: var(--brown);
   text-align: center;
+  text-transform: uppercase;
   outline: none;
   min-width: 0;
+}
+
+/* クリアDLGの下段ボタン(もういちど/コードコピー) */
+.clear-btn-row {
+  display: flex;
+  gap: 8px;
+}
+
+.clear-btn-row .big-btn {
+  flex: 1;
+  padding: 11px 10px;
+  font-size: 15px;
 }
 
 #code-input:focus {

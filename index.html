@@ -56,7 +56,7 @@
         <div id="resume-info" class="hidden"></div>
         <p class="modal-text">ステージコードを入力してもOK</p>
         <div class="code-row">
-          <input id="code-input" type="text" inputmode="numeric" placeholder="例: 1234-5" />
+          <input id="code-input" type="text" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="8" placeholder="例: MWD-H4F" />
           <button id="btn-code-go" class="big-btn primary slim">GO</button>
         </div>
         <button id="btn-paste" class="big-btn slim self-center">📋 ペースト</button>
@@ -99,6 +99,10 @@
           <div class="sb-row sb-cum" id="sb-cum-row">ごうけい <b id="sb-cum">150</b></div>
         </div>
         <button id="btn-next" class="big-btn primary">つぎのステージへ</button>
+        <div class="clear-btn-row">
+          <button id="btn-clear-retry" class="big-btn" title="スコアをやり直して再挑戦（ペナルティなし）">もういちど</button>
+          <button id="btn-clear-copy" class="big-btn sub">📋 コード</button>
+        </div>
       </div>
     </div>
 

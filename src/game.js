@@ -93,6 +93,11 @@ export class Game {
         this.seed = save.seed;
         this.stage = save.stage;
         this.score = save.score || 0;
+        // クリア後に閉じた場合などセーブ済みスコアがハイスコア未反映のことがある
+        if (this.score > this.hiscore) {
+          this.hiscore = this.score;
+          this._saveSettings();
+        }
         this.retryCount = 0;
         this._hide('modal-continue');
         this.startStage();
@@ -105,11 +110,31 @@ export class Game {
     $('btn-next').onclick = () => {
       this.sfx.click();
       this._cancelClearSeq();
+      // このステージの結果を確定(ハイスコア更新)
+      if (this.score > this.hiscore) {
+        this.hiscore = this.score;
+        this._saveSettings();
+      }
+      this._lastGain = 0;
       this.stage++;
       this.retryCount = 0;
       this._hide('modal-clear');
       this.startStage();
     };
+    // クリア後の「もういちど」: 得たスコアを取り消して同じステージを仕切り直し(ペナルティなし)
+    $('btn-clear-retry').onclick = () => {
+      this.sfx.click();
+      this._cancelClearSeq();
+      this.score -= this._lastGain || 0;
+      this._lastGain = 0;
+      this.retryCount = 0;
+      this._hide('modal-clear');
+      this._save(); // 進行セーブも現ステージに巻き戻す
+      this.startStage();
+    };
+    // クリア後のコードコピー(難しかったステージの共有用)
+    $('btn-clear-copy').onclick = () =>
+      this._copyText(makeCode(this.seed, this.stage));
     // 演出中にダイアログをタップしたら最後まで一気に表示
     $('modal-clear').addEventListener('click', (e) => {
       if (e.target.id !== 'btn-next' && this._finishClearSeq) {
@@ -263,7 +288,7 @@ export class Game {
   _continueFromCode() {
     const parsed = parseCode($('code-input').value);
     if (!parsed) {
-      this._toast('コードの形式が違います（例: 1234-5）');
+      this._toast('コードが正しくありません（例: MWD-H4F）');
       return;
     }
     this.sfx.click();
@@ -571,10 +596,8 @@ export class Game {
     const mult = retryMult(this.retryCount);
     const gain = Math.round((carrotBonus + perfect + speed + noHint) * mult);
     this.score += gain;
-    if (this.score > this.hiscore) {
-      this.hiscore = this.score;
-      this._saveSettings();
-    }
+    this._lastGain = gain; // クリアDLGの「もういちど」で取り消せるように覚えておく
+    // ハイスコアの確定は「つぎのステージへ」を押した時点(やり直しで巻き戻せるため)
 
     $('clear-stage').textContent = this.stage;
     // 次ステージを先にセーブ（途中で閉じても続きから遊べる）
