@@ -79,6 +79,13 @@ export class Sfx {
     this._tone(520, 0.08, { type: 'sine', vol: 0.1 });
     this._tone(780, 0.1, { type: 'sine', vol: 0.1, delay: 0.07 });
   }
+  boing() {
+    this._tone(220, 0.22, { type: 'sine', vol: 0.16, slide: 480 });
+    this._tone(110, 0.1, { type: 'square', vol: 0.08, slide: 120 });
+  }
+  slide() {
+    this._tone(900, 0.3, { type: 'triangle', vol: 0.07, slide: -500 });
+  }
   thud() {
     this._tone(150, 0.1, { type: 'square', vol: 0.15, slide: -50 });
     this._tone(75, 0.12, { type: 'sine', vol: 0.18, slide: -20 });

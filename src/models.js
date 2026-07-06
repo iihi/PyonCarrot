@@ -101,9 +101,11 @@ export function makeRabbit() {
 }
 
 // ---------- ニンジン1本 ----------
-function makeCarrot(scale = 1) {
+function makeCarrot(scale = 1, golden = false) {
   const g = new THREE.Group();
-  const orange = mat(0xff7a1c);
+  const orange = golden
+    ? mat(0xffd24a, { emissive: 0x8a6a00, emissiveIntensity: 0.45, roughness: 0.45 })
+    : mat(0xff7a1c);
   // 本体を2段にしてニンジンらしいふくらみを出す
   const upper = mesh(new THREE.CylinderGeometry(0.16, 0.09, 0.26, 6), orange, 0, 0.42, 0);
   g.add(upper);
@@ -150,8 +152,9 @@ const CARROT_LAYOUT = {
   ],
 };
 
-export function makeTile(value) {
+export function makeTile(tile) {
   const g = new THREE.Group();
+  const value = tile.value;
 
   const mound = mesh(
     new THREE.CylinderGeometry(0.4, 0.5, 0.18, 7),
@@ -161,9 +164,17 @@ export function makeTile(value) {
     0
   );
   g.add(mound);
+  // 氷マスは上面がつるっとした青
   const top = mesh(
     new THREE.CylinderGeometry(0.38, 0.41, 0.05, 7),
-    mat(0xb98a5e),
+    tile.ice
+      ? new THREE.MeshStandardMaterial({
+          color: 0xbfe9ff,
+          roughness: 0.15,
+          metalness: 0.15,
+          flatShading: true,
+        })
+      : mat(0xb98a5e),
     0,
     0.19,
     0
@@ -172,7 +183,7 @@ export function makeTile(value) {
 
   const carrots = new THREE.Group();
   for (const o of CARROT_LAYOUT[value] || CARROT_LAYOUT[1]) {
-    const c = makeCarrot(CARROT_SCALE);
+    const c = makeCarrot(CARROT_SCALE, !!tile.golden);
     c.position.set(
       ROW_AXIS.x * o.r + FWD_AXIS.x * o.f,
       0.18,
@@ -184,6 +195,34 @@ export function makeTile(value) {
   carrots.position.set(FWD_AXIS.x * 0.1, 0, FWD_AXIS.z * 0.1);
   g.add(carrots);
   g.userData.carrots = carrots;
+
+  // ジャンプ台: 手前に赤いトランポリン
+  if (tile.spring) {
+    const base = mesh(
+      new THREE.CylinderGeometry(0.2, 0.22, 0.05, 8),
+      mat(0x7a4020),
+      FWD_AXIS.x * 0.3,
+      0.23,
+      FWD_AXIS.z * 0.3
+    );
+    g.add(base);
+    const pad = mesh(
+      new THREE.CylinderGeometry(0.17, 0.19, 0.035, 8),
+      mat(0xef4444, { roughness: 0.6 }),
+      FWD_AXIS.x * 0.3,
+      0.27,
+      FWD_AXIS.z * 0.3
+    );
+    g.add(pad);
+    const dot = mesh(
+      new THREE.CylinderGeometry(0.07, 0.07, 0.037, 8),
+      mat(0xffffff),
+      FWD_AXIS.x * 0.3,
+      0.272,
+      FWD_AXIS.z * 0.3
+    );
+    g.add(dot);
+  }
   return g;
 }
 

@@ -3,8 +3,10 @@ import {
   generate,
   reachableFrom,
   findSolution,
+  resolveMove,
   makeCode,
   parseCode,
+  GOLD_CARROTS,
 } from './level.js';
 import { GameScene } from './scene3d.js';
 import { Sfx } from './sfx.js';
@@ -16,6 +18,8 @@ const COST_REWIND = 3; // まきもどしのニンジン消費
 const COST_HINT = 5; // ヒントのニンジン消費
 const SCORE_PER_CARROT = 10; // 残ニンジン1本あたりのスコア
 const NO_HINT_BONUS = 100; // ヒント未使用クリアのボーナス
+const PERFECT_BONUS = 300; // 全マス回収クリア(じっくり派)
+const SPEED_BONUS = 300; // 最短手数+1以内クリア(駆け抜け派)
 const retryMult = (r) => (r === 0 ? 1.5 : r >= 3 ? 0.5 : 1.0); // リトライ倍率
 
 const $ = (id) => document.getElementById(id);
@@ -347,6 +351,10 @@ export class Game {
     this.scene.playEntrance().then(() => {
       // 登場したらスタートマスのニンジンをまず1口
       this._eatTile(0);
+      this.scene.setOnSpring(!!this.level.tiles[0].spring);
+      if (this.level.tiles[0].spring) {
+        this._toastOnce('_tut_spring', 'ジャンプ台！🦘 ここからは2マスとおくまで飛べる！');
+      }
       this.state = 'playing';
       this._updateHUD();
       this._updateReachable();
@@ -365,9 +373,13 @@ export class Game {
     const tile = this.level.tiles[idx];
     if (tile.eaten) return;
     tile.eaten = true;
-    this.carrots += tile.value;
+    const gain = tile.golden ? GOLD_CARROTS : tile.value;
+    this.carrots += gain;
     this.scene.eatCarrots(idx);
-    this._carrotPop(tile.x, tile.y, tile.value);
+    this._carrotPop(tile.x, tile.y, gain);
+    if (tile.golden) {
+      this._toastOnce('_tut_gold', `大ニンジン！✨ ${GOLD_CARROTS}本分ゲット！`);
+    }
   }
 
   // 「+N🥕」のポップ表示
@@ -476,10 +488,15 @@ export class Game {
     this.state = 'busy';
     this.scene.clearRings();
     this.scene.clearHint();
-    this.history.push({ cur: this.cur });
 
-    this.sfx.hop();
     const fromIdx = this.cur;
+    const fromTile = this.level.tiles[fromIdx];
+    // 着地の解決(氷なら滑る)。undo用に食べたマス一覧を記録
+    const resolved =
+      id === 'goal' ? null : resolveMove(this.level, this.alive, fromIdx, id);
+    this.history.push({ cur: fromIdx, eaten: resolved ? resolved.eaten : [] });
+
+    this.sfx[fromTile.spring ? 'boing' : 'hop']();
     this.alive[fromIdx] = false; // 元いたマスは消える(スタート地点はalive[0]=false済)
 
     await this.scene.jumpTo(fromIdx, id);
@@ -490,13 +507,38 @@ export class Game {
       return;
     }
 
-    this.cur = id;
-    this.alive[id] = false; // 乗っているマスには飛べない
-    this._eatTile(id); // ニンジンをパクッ(+value)
+    for (const idx of resolved.eaten) this.alive[idx] = false;
+    this._eatTile(id); // 着地マスをパクッ
+
+    // 氷スライド
+    if (resolved.eaten.length > 1) {
+      this.sfx.slide();
+      this._toastOnce('_tut_ice', 'つるつる〜！❄️ こおりのマスはすべって止まらない！');
+      await this.scene.slideAlong(resolved.eaten);
+      for (let k = 1; k < resolved.eaten.length; k++) {
+        this._eatTile(resolved.eaten[k]);
+      }
+    }
+
+    this.cur = resolved.finalIdx;
+    const landed = this.level.tiles[this.cur];
+    this.scene.setOnSpring(!!landed.spring);
+    if (landed.spring) {
+      this._toastOnce('_tut_spring', 'ジャンプ台！🦘 ここからは2マスとおくまで飛べる！');
+    }
 
     this.state = 'playing';
     this._updateHUD();
     this._updateReachable();
+  }
+
+  // 一度だけ出す説明トースト
+  _toastOnce(flag, msg) {
+    try {
+      if (localStorage.getItem(SAVE_KEY + flag)) return;
+      localStorage.setItem(SAVE_KEY + flag, '1');
+    } catch (e) {}
+    this._toast(msg, 2600);
   }
 
   _onClear() {
@@ -504,11 +546,14 @@ export class Game {
     this.scene.celebrate();
     this.sfx.clear();
 
-    // スコア計算: (残ニンジン×10 + ノーヒントボーナス) × リトライ倍率
+    // スコア計算: (残ニンジン×10 + 各種ボーナス) × リトライ倍率
     const carrotBonus = this.carrots * SCORE_PER_CARROT;
+    const perfect = this.level.tiles.every((t) => t.eaten) ? PERFECT_BONUS : 0;
+    const movesUsed = this.history.length;
+    const speed = movesUsed <= this.level.minMoves + 1 ? SPEED_BONUS : 0;
     const noHint = this.hintsUsed === 0 ? NO_HINT_BONUS : 0;
     const mult = retryMult(this.retryCount);
-    const gain = Math.round((carrotBonus + noHint) * mult);
+    const gain = Math.round((carrotBonus + perfect + speed + noHint) * mult);
     this.score += gain;
     if (this.score > this.hiscore) {
       this.hiscore = this.score;
@@ -522,7 +567,7 @@ export class Game {
     setTimeout(() => {
       if (this.state !== 'clear') return;
       this._show('modal-clear');
-      this._playClearSequence({ carrotBonus, noHint, mult, gain });
+      this._playClearSequence({ carrotBonus, perfect, speed, noHint, mult, gain });
     }, 1500);
   }
 
@@ -534,12 +579,16 @@ export class Game {
 
     const rows = {
       carrots: $('sb-carrots-row'),
+      perfect: $('sb-perfect-row'),
+      speed: $('sb-speed-row'),
       nohint: $('sb-nohint-row'),
       mult: $('sb-mult-row'),
       total: $('sb-total-row'),
       cum: $('sb-cum-row'),
     };
     // 出ない行は非表示、出る行は「待機」状態に
+    rows.perfect.classList.toggle('hidden', !d.perfect);
+    rows.speed.classList.toggle('hidden', !d.speed);
     rows.nohint.classList.toggle('hidden', !d.noHint);
     rows.mult.classList.toggle('hidden', d.mult === 1);
     for (const r of Object.values(rows)) {
@@ -550,6 +599,8 @@ export class Game {
     // 値をセット（ニンジンはカウントアップで後から入る）
     $('sb-carrots-n').textContent = 0;
     $('sb-carrots').textContent = '+0';
+    $('sb-perfect').textContent = `+${fmt(PERFECT_BONUS)}`;
+    $('sb-speed').textContent = `+${fmt(SPEED_BONUS)}`;
     $('sb-nohint').textContent = `+${fmt(NO_HINT_BONUS)}`;
     if (d.mult !== 1) {
       $('sb-mult-label').textContent =
@@ -571,6 +622,14 @@ export class Game {
       this._countUpCarrots(this.carrots);
     });
     let t = 1400;
+    if (d.perfect) {
+      later(t, () => pop(rows.perfect));
+      t += 380;
+    }
+    if (d.speed) {
+      later(t, () => pop(rows.speed));
+      t += 380;
+    }
     if (d.noHint) {
       later(t, () => pop(rows.nohint));
       t += 380;
@@ -706,12 +765,18 @@ export class Game {
 
     const prev = this.history.pop();
     const fromId = this.cur;
-    // 今いたマスはフィールドに残る（また飛び先の候補になる。ニンジンは食べたあとなので戻らない）
+    // この移動で消えたマスを全てフィールドに戻す（氷スライドぶん含む。
+    // ニンジンは食べたあとなので戻らない）
+    for (const idx of prev.eaten) {
+      this.alive[idx] = true;
+      if (idx !== fromId) this.scene.restoreTile(idx);
+    }
     this.alive[fromId] = true;
     // 戻り先のマスはウサギが乗るので alive は false のまま
     await this.scene.rewindTo(prev.cur, fromId);
 
     this.cur = prev.cur;
+    this.scene.setOnSpring(!!this.level.tiles[this.cur].spring);
     this.state = 'playing';
     this._updateHUD();
     this._updateReachable();

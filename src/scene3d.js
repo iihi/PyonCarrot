@@ -154,8 +154,9 @@ export class GameScene {
     this.terrain = makeTerrain(level.heights);
     this.scene.add(this.terrain);
 
+    this.onSpring = false;
     level.tiles.forEach((t, i) => {
-      const group = makeTile(t.value);
+      const group = makeTile(t);
       const baseY = this._cellY(t.x, t.y);
       group.position.copy(this.worldPos(t.x, t.y, baseY));
       const number = makeNumberSprite(t.value);
@@ -704,6 +705,55 @@ export class GameScene {
 
   // ※まきもどしで復元されたマスは「食べたあと」なのでニンジンは戻さない
 
+  // まきもどしで沈んだマスを盤面に戻す(氷スライドで消えたぶんなど)
+  restoreTile(idx) {
+    const tm = this.tileMeshes[idx];
+    if (tm.alive && tm.group.visible) return;
+    tm.alive = true;
+    tm.group.visible = true;
+    this.killTweens(`tile${idx}`);
+    this.tween(0.3, 0, easeOut, (k) => {
+      tm.group.position.y = tm.baseY - 1.3 * (1 - k);
+      tm.group.scale.setScalar(Math.max(0.01, k));
+    }, null, `tile${idx}`);
+  }
+
+  // 氷スライド: 食べたマス列に沿ってツーッと滑る(通過したマスは沈む)
+  slideAlong(eaten) {
+    return new Promise((resolve) => {
+      this.killTweens('rabbit'); // 着地バウンドを打ち切ってスライドへ
+      let delay = 0;
+      for (let k = 1; k < eaten.length; k++) {
+        const a = this.level.tiles[eaten[k - 1]];
+        const b = this.level.tiles[eaten[k]];
+        const p0 = this.worldPos(a.x, a.y, this._standY(a.x, a.y));
+        const p1 = this.worldPos(b.x, b.y, this._standY(b.x, b.y));
+        const dist = Math.abs(b.x - a.x) + Math.abs(b.y - a.y);
+        const dur = 0.1 + dist * 0.06;
+        const prevIdx = eaten[k - 1];
+        const isLast = k === eaten.length - 1;
+        this.tween(dur, delay, (t) => t, (t) => {
+          this.rabbit.position.lerpVectors(p0, p1, t);
+          // つるつる感: 低くかがんだまま
+          this.rabbit.scale.set(1.08, 0.85, 1.08);
+        }, () => {
+          this._sinkTile(prevIdx); // 通過したマスは沈む
+          if (isLast) {
+            this.rabbit.scale.setScalar(1);
+            this.rabbit.position.copy(p1);
+            resolve();
+          }
+        }, 'rabbit');
+        delay += dur;
+      }
+      if (eaten.length <= 1) resolve();
+    });
+  }
+
+  setOnSpring(v) {
+    this.onSpring = v;
+  }
+
   celebrate() {
     this.goalCollected = true;
     const bunny = this.goalMesh && this.goalMesh.userData.bunny;
@@ -874,15 +924,22 @@ export class GameScene {
         inner.rotation.x = 0;
       }
 
-      // ときどき足踏みホップ（伸び縮みのジャンプモーション付き。食事中・移動中はしない）
-      const hopT = this.time % 4.3;
-      if (!rabbitBusy && !eating && hopT < 0.34) {
-        const k = hopT / 0.34;
-        inner.position.y = 0.13 * Math.sin(k * Math.PI);
-        // 踏切と着地でつぶれ、空中で伸びる
-        stretch *= 1 + 0.24 * Math.sin(k * Math.PI) - 0.12 * Math.abs(Math.cos(k * Math.PI));
+      if (this.onSpring && !rabbitBusy && !eating) {
+        // ジャンプ台の上ではその場でぽよんぽよんバウンドし続ける
+        const bt = Math.abs(Math.sin(this.time * 5.5));
+        inner.position.y = bt * 0.18;
+        stretch *= 1 + 0.15 * bt - 0.1 * (1 - bt);
       } else {
-        inner.position.y = 0;
+        // ときどき足踏みホップ（伸び縮みのジャンプモーション付き。食事中・移動中はしない）
+        const hopT = this.time % 4.3;
+        if (!rabbitBusy && !eating && hopT < 0.34) {
+          const k = hopT / 0.34;
+          inner.position.y = 0.13 * Math.sin(k * Math.PI);
+          // 踏切と着地でつぶれ、空中で伸びる
+          stretch *= 1 + 0.24 * Math.sin(k * Math.PI) - 0.12 * Math.abs(Math.cos(k * Math.PI));
+        } else {
+          inner.position.y = 0;
+        }
       }
       inner.scale.y = 1.18 * stretch;
 
