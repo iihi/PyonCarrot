@@ -184,57 +184,6 @@ export function makeTile(tile) {
   );
   g.add(top);
 
-  // トロッコマス: レール(方向つき)+荷車。乗るとレールの先まで運ばれる
-  if (tile.cart) {
-    const railGroup = new THREE.Group();
-    const railMat = mat(0x8a8f98, { roughness: 0.4, metalness: 0.4 });
-    const tieMat = mat(0x6e4a2a);
-    // 枕木×3
-    for (let i = -1; i <= 1; i++) {
-      const tie = mesh(new THREE.BoxGeometry(0.5, 0.03, 0.1), tieMat, 0, 0.22, i * 0.3);
-      railGroup.add(tie);
-    }
-    // レール×2 (z方向に伸ばして向きはグループ回転で合わせる)
-    for (const s of [-1, 1]) {
-      const rail = mesh(new THREE.BoxGeometry(0.05, 0.035, 0.95), railMat, s * 0.16, 0.245, 0);
-      railGroup.add(rail);
-    }
-    // 進行方向の矢印(黄色い小さな三角)
-    const arrow = mesh(new THREE.ConeGeometry(0.07, 0.16, 4), mat(0xffd24a), 0, 0.235, 0.42);
-    arrow.rotation.x = Math.PI / 2;
-    railGroup.add(arrow);
-
-    // 荷車(木の箱+車輪)
-    const cart = new THREE.Group();
-    const body = mesh(new THREE.BoxGeometry(0.3, 0.16, 0.4), mat(0x9c6033), 0, 0.36, 0);
-    cart.add(body);
-    const inner = mesh(new THREE.BoxGeometry(0.24, 0.06, 0.34), mat(0x5f3a1e), 0, 0.42, 0);
-    cart.add(inner);
-    const wheels = [];
-    for (const sx of [-1, 1]) {
-      for (const sz of [-1, 1]) {
-        const w = mesh(
-          new THREE.CylinderGeometry(0.06, 0.06, 0.04, 8),
-          mat(0x3a3a3a, { roughness: 0.5 }),
-          sx * 0.17,
-          0.28,
-          sz * 0.13
-        );
-        w.rotation.z = Math.PI / 2;
-        wheels.push(w);
-        cart.add(w);
-      }
-    }
-    cart.userData.wheels = wheels;
-    railGroup.add(cart);
-
-    // レールの向き = tile.rail
-    railGroup.rotation.y = Math.atan2(tile.rail[0], tile.rail[1]);
-    g.add(railGroup);
-    g.userData.cart = cart;
-    g.userData.railGroup = railGroup;
-  }
-
   const carrots = new THREE.Group();
   for (const o of CARROT_LAYOUT[value] || CARROT_LAYOUT[1]) {
     const c = makeCarrot(CARROT_SCALE, !!tile.golden);
@@ -251,12 +200,71 @@ export function makeTile(tile) {
   }
   // 数字バッジと被らないよう、全体を画面の少し下(手前)へずらす
   carrots.position.set(FWD_AXIS.x * 0.1, 0, FWD_AXIS.z * 0.1);
-  // トロッコマスは荷車と重ならないよう小さめ・さらに手前へ
+
+  // トロッコマス: レール(方向つき)+大きな赤い荷車。ニンジンは荷台に乗せる
   if (tile.cart) {
-    carrots.scale.multiplyScalar(0.72);
-    carrots.position.set(FWD_AXIS.x * 0.27, 0, FWD_AXIS.z * 0.27);
+    const railGroup = new THREE.Group();
+    const railMat = mat(0x555b66, { roughness: 0.4, metalness: 0.5 });
+    const tieMat = mat(0x6e4a2a);
+    for (let i = -1; i <= 1; i++) {
+      const tie = mesh(new THREE.BoxGeometry(0.66, 0.04, 0.12), tieMat, 0, 0.205, i * 0.36);
+      railGroup.add(tie);
+    }
+    for (const s of [-1, 1]) {
+      const rail = mesh(new THREE.BoxGeometry(0.06, 0.045, 1.05), railMat, s * 0.22, 0.235, 0);
+      railGroup.add(rail);
+    }
+    // 進行方向の黄色い矢印(大きめ)
+    const arrow = mesh(new THREE.ConeGeometry(0.11, 0.24, 4), mat(0xffd402), 0, 0.24, 0.5);
+    arrow.rotation.x = Math.PI / 2;
+    railGroup.add(arrow);
+
+    // 大きな赤い荷車(開いた荷台=底+四方の壁)。ニンジンが中に乗る
+    const cart = new THREE.Group();
+    const red = mat(0xe23c3c, { roughness: 0.5 });
+    const redDark = mat(0xb02828, { roughness: 0.5 });
+    const W = 0.52, L = 0.58, H = 0.28, TH = 0.05;
+    const floorY = 0.34;
+    cart.add(mesh(new THREE.BoxGeometry(W, TH, L), redDark, 0, floorY, 0));
+    // 四方の壁
+    cart.add(mesh(new THREE.BoxGeometry(W, H, TH), red, 0, floorY + H / 2, L / 2 - TH / 2));
+    cart.add(mesh(new THREE.BoxGeometry(W, H, TH), red, 0, floorY + H / 2, -L / 2 + TH / 2));
+    cart.add(mesh(new THREE.BoxGeometry(TH, H, L), red, W / 2 - TH / 2, floorY + H / 2, 0));
+    cart.add(mesh(new THREE.BoxGeometry(TH, H, L), red, -W / 2 + TH / 2, floorY + H / 2, 0));
+    // 上ぶちの明るいライン
+    cart.add(mesh(new THREE.BoxGeometry(W + 0.03, 0.04, L + 0.03), mat(0xff7a5a), 0, floorY + H, 0));
+    // 車輪(大きめ・黄色ハブ)
+    const wheels = [];
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        const w = mesh(
+          new THREE.CylinderGeometry(0.11, 0.11, 0.05, 10),
+          mat(0x2b2b30, { roughness: 0.5 }),
+          sx * 0.28,
+          0.22,
+          sz * 0.2
+        );
+        w.rotation.z = Math.PI / 2;
+        w.add(mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.055, 6), mat(0xffd24a), 0, 0, 0));
+        wheels.push(w);
+        cart.add(w);
+      }
+    }
+    cart.userData.wheels = wheels;
+    railGroup.add(cart);
+
+    // ニンジンを荷台の中へ(横並びを少し縮めて底に乗せる)
+    carrots.position.set(0, floorY + 0.02, 0);
+    carrots.scale.multiplyScalar(0.82);
+    cart.add(carrots);
+
+    railGroup.rotation.y = Math.atan2(tile.rail[0], tile.rail[1]);
+    g.add(railGroup);
+    g.userData.cart = cart;
+    g.userData.railGroup = railGroup;
+  } else {
+    g.add(carrots);
   }
-  g.add(carrots);
   g.userData.carrots = carrots;
 
   return g;
