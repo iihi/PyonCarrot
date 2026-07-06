@@ -352,8 +352,9 @@ export function makeGoal() {
 }
 
 // ---------- 段差地形（段々畑） ----------
-// 高さレベルごとに草の色を少し変えて、パッと見で段が分かるようにする
-const TERRACE_TOP = [0, 0x8fd465, 0x9cdb6f, 0xaae37b];
+// 高さレベルごとに草の明るさを一段ずつ変えて、パッと見で段数が分かるようにする
+// (島の草 0x82ca5c → 1段 → 2段 → 3段 と上がるほど明るい緑)
+const TERRACE_TOP = [0, 0x8cd05e, 0xa2de6e, 0xbaec82];
 const TERRACE_SIDE = 0x96683f;
 
 export function makeTerrain(heights) {
