@@ -125,19 +125,14 @@ body {
   margin-right: 3px;
 }
 
-.badge {
-  position: absolute;
-  top: -8px;
-  right: -6px;
-  background: #fff;
+.cost {
+  display: inline-block;
+  margin-left: 5px;
+  background: rgba(255, 255, 255, 0.85);
   color: var(--orange-dark);
-  border: 2px solid var(--orange-dark);
   border-radius: 999px;
-  min-width: 22px;
-  height: 22px;
-  line-height: 18px;
-  font-size: 12px;
-  text-align: center;
+  padding: 1px 7px;
+  font-size: 11px;
 }
 
 .hud-mini-row {
@@ -167,26 +162,130 @@ body {
   opacity: 1;
 }
 
-/* ヘルプ内のアイテムアイコン（ゲーム内の色と白フチを再現） */
-.item-ic {
+/* ---------- スコア内訳（クリアDLG） ---------- */
+.score-breakdown {
+  background: rgba(88, 185, 76, 0.12);
+  border-radius: 14px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sb-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--brown);
+}
+
+.sb-row b {
+  color: var(--green-dark);
+}
+
+.sb-total {
+  border-top: 2px dashed rgba(90, 59, 30, 0.25);
+  padding-top: 5px;
+  font-size: 15px;
+}
+
+.sb-total b {
+  color: var(--orange-dark);
+  font-size: 17px;
+}
+
+.sb-cum b {
+  color: var(--orange-dark);
+}
+
+/* 演出用: 待機中は場所だけ確保して見えない */
+.sb-row.sb-wait {
+  visibility: hidden;
+}
+
+/* 「ドンッ」と出る */
+.sb-row.sb-pop {
+  animation: sb-slam 0.28s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+
+@keyframes sb-slam {
+  0% {
+    opacity: 0;
+    transform: scale(1.7);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(0.96);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* HUDの🥕からスコアボードへ弧を描いて飛ぶニンジン */
+.fly-carrot {
+  position: absolute;
+  font-size: 20px;
+  z-index: 40;
+  pointer-events: none;
+}
+
+/* 🥕が着地したとき数字がプルンと弾む */
+.sb-bump {
   display: inline-block;
-  width: 13px;
-  height: 13px;
-  border: 2px solid #fff;
-  box-shadow: 0 0 0 1px rgba(90, 59, 30, 0.25);
-  vertical-align: -2px;
-  margin-right: 2px;
+  animation: sb-bump-pop 0.22s ease-out;
 }
 
-.ic-star {
-  background: linear-gradient(#ffe08a, #ffd24a);
-  transform: rotate(45deg);
-  border-radius: 3px;
+@keyframes sb-bump-pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.35);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
-.ic-bulb {
-  background: linear-gradient(#8ed4ff, #59c2ff);
-  border-radius: 50%;
+/* ---------- ニンジン獲得ポップ ---------- */
+.carrot-pop {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  font-size: 17px;
+  font-weight: 900;
+  color: #ff7a1c;
+  text-shadow: 0 0 4px #fff, 0 0 4px #fff, 0 1px 0 #fff;
+  pointer-events: none;
+  z-index: 12;
+  animation: carrot-pop-float 1s ease-out forwards;
+}
+
+@keyframes carrot-pop-float {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -80%);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -220%);
+  }
+}
+
+/* ---------- タイトルのハイスコア ---------- */
+.title-hiscore {
+  margin-top: 10px;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--orange-dark);
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 999px;
+  padding: 5px 16px;
+  display: inline-block;
 }
 
 .share-code {
@@ -377,6 +476,50 @@ body {
 
 #code-input:focus {
   border-color: var(--orange);
+}
+
+/* ---------- 段差チュートリアル吹き出し ---------- */
+#tut-balloon {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  background: #fff;
+  border: 3px solid var(--orange);
+  border-radius: 14px;
+  padding: 9px 13px;
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--brown);
+  text-align: center;
+  white-space: nowrap;
+  z-index: 15;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  animation: balloon-bob 1.6s ease-in-out infinite;
+}
+
+#tut-balloon b {
+  color: var(--orange-dark);
+}
+
+#tut-balloon::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -12px;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: var(--orange);
+}
+
+@keyframes balloon-bob {
+  0%,
+  100% {
+    transform: translate(-50%, -100%);
+  }
+  50% {
+    transform: translate(-50%, calc(-100% - 6px));
+  }
 }
 
 /* ---------- トースト ---------- */

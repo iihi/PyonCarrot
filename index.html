@@ -14,14 +14,15 @@
     <div id="hud" class="hidden">
       <div id="hud-top">
         <div class="hud-chip">STAGE <b id="hud-stage">1</b></div>
-        <div class="hud-chip hud-count">🥕 <b id="hud-count">4</b></div>
+        <div class="hud-chip">SCORE <b id="hud-score">0</b></div>
+        <div class="hud-chip hud-count">🥕 <b id="hud-count">0</b></div>
       </div>
       <div id="hud-bottom">
         <button id="btn-rewind" class="hud-btn item-btn">
-          <span class="icon">★</span>まきもどし<span class="badge" id="cnt-rewind">1</span>
+          <span class="icon">★</span>まきもどし<span class="cost">-3🥕</span>
         </button>
         <button id="btn-hint" class="hud-btn item-btn">
-          <span class="icon">💡</span>ヒント<span class="badge" id="cnt-hint">1</span>
+          <span class="icon">💡</span>ヒント<span class="cost">-5🥕</span>
         </button>
         <button id="btn-retry" class="hud-btn">リトライ</button>
         <div class="hud-mini-row">
@@ -38,6 +39,7 @@
       <div class="logo">
         <img class="logo-img" src="./logo.png" alt="ぴょんぴょんキャロット" />
         <div class="logo-sub">🐰 うさぎのにんじん畑パズル 🥕</div>
+        <div class="title-hiscore hidden" id="title-hiscore"></div>
       </div>
       <div class="title-buttons">
         <button id="btn-start" class="big-btn primary">はじめから</button>
@@ -71,8 +73,10 @@
           <li>✨ 光っているマスへタップ（PCは矢印キー）で移動。</li>
           <li>🕳️ 飛び立った畑は消えます。<b>すべての畑を通ってから</b>、お花の台座で待つ<b>ピンクのウサギ</b>のところへ！</li>
           <li>🥕 カウントは残りジャンプ回数。うごけなくなったらゲームオーバー。</li>
-          <li><span class="item-ic ic-star"></span> <b>金の星</b> ＝ まきもどし +1（1手前にもどる）</li>
-          <li><span class="item-ic ic-bulb"></span> <b>青い玉</b> ＝ ヒント +1（次の一手を光らせる）<br />どちらも畑の上に落ちていて、乗ると拾えます。</li>
+          <li>⛰️ <b>段差のある畑</b>：高い所へ上るにはパワーが1段ごとに<b>1つ多く</b>必要。低い所へ降りるときは1段ごとに<b>1マス遠くへ</b>飛べる。出発と着地より高い地形は飛び越えられないよ。</li>
+          <li>🥕 マスに乗るとニンジンを食べて、数字のぶんだけ<b>ニンジンがたまる</b>よ。</li>
+          <li>★ <b>まきもどし</b>（1手前にもどる）＝ニンジン3本 ／ 💡 <b>ヒント</b>（次の一手を光らせる）＝ニンジン5本。食べたニンジンと引きかえに使えるよ。</li>
+          <li>🏆 クリアすると<b>のこしたニンジンがスコア</b>になる（1本=10点）！ヒントを使わなければ<b>+100</b>、リトライ0回なら<b>×1.5</b>のごほうび（3回以上だと×0.5…）。ニンジンは次のステージに持ちこせないよ。</li>
           <li>📤 下の「コード」ボタンでステージコードを表示・コピー。コード入力すれば同じステージを共有・再開できます。</li>
         </ul>
         <p class="modal-text small">PCキー: 矢印=移動 / Enter=OK / R=リトライ / Z=まきもどし / H=ヒント / M=サウンド</p>
@@ -85,6 +89,13 @@
       <div class="modal-box">
         <h2 class="clear-title">🎉 クリア！ 🎉</h2>
         <p class="modal-text">ステージ <b id="clear-stage">1</b> クリア！</p>
+        <div class="score-breakdown">
+          <div class="sb-row" id="sb-carrots-row"><span>のこりニンジン <span id="sb-carrots-n">0</span>本</span> <b id="sb-carrots">+0</b></div>
+          <div class="sb-row" id="sb-nohint-row">ノーヒントボーナス <b id="sb-nohint">+100</b></div>
+          <div class="sb-row" id="sb-mult-row"><span id="sb-mult-label">ノーリトライボーナス</span> <b id="sb-mult">×1.5</b></div>
+          <div class="sb-row sb-total" id="sb-total-row">スコア <b id="sb-total">+150</b></div>
+          <div class="sb-row sb-cum" id="sb-cum-row">ごうけい <b id="sb-cum">150</b></div>
+        </div>
         <button id="btn-next" class="big-btn primary">つぎのステージへ</button>
       </div>
     </div>
@@ -105,10 +116,17 @@
       <div class="modal-box">
         <h2>😢 ざんねん…</h2>
         <p class="modal-text" id="over-msg">これ以上すすめません…</p>
-        <button id="btn-rewind-over" class="big-btn primary">★ まきもどしを使う</button>
+        <p class="modal-text small">スコア: <b id="over-score">0</b></p>
+        <button id="btn-rewind-over" class="big-btn primary">★ まきもどしを使う（-3🥕）</button>
         <button id="btn-retry-over" class="big-btn">リトライ</button>
         <button id="btn-title-over" class="big-btn sub">タイトルへ</button>
       </div>
+    </div>
+
+    <!-- 段差の初回チュートリアル吹き出し -->
+    <div id="tut-balloon" class="hidden">
+      ⛰️ 高いところへ上るには<br />パワーが<b>1つ多く</b>ひつよう！<br />
+      降りるときは<b>1つ遠くへ</b>飛べるよ
     </div>
 
     <div id="toast" class="hidden"></div>

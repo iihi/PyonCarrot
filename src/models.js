@@ -1,5 +1,9 @@
 // ローポリ3Dモデルをコードで生成（外部アセット不要）
 import * as THREE from 'three';
+import { GRID } from './level.js';
+
+// 段差1レベルぶんの高さ(ワールド単位)。低めにして奥のマスが隠れにくいようにする
+export const HSTEP = 0.35;
 
 const FLAT = { flatShading: true };
 
@@ -312,11 +316,8 @@ export function makeGoal() {
   g.add(flag);
   g.userData.flag = flag;
 
-  // 常時ゆっくり明滅する金のリング
-  const glow = makeRing(0xffd24a);
-  glow.scale.setScalar(1.12);
-  g.add(glow);
-  g.userData.glow = glow;
+  // ※常時明滅リングは「主人公と誤認しやすい」FBを受けて廃止。
+  //   行けるようになった時だけ点滅リングが出る。
 
   // ピンクのウサギが待っている
   const bunny = makeGoalRabbit();
@@ -327,35 +328,63 @@ export function makeGoal() {
   return g;
 }
 
-// ---------- アイテム ----------
-export function makePickup(type) {
-  const g = new THREE.Group();
-  let m;
-  if (type === 'rewind') {
-    // 金の星（まきもどし +1）
-    m = mesh(
-      new THREE.OctahedronGeometry(0.14, 0),
-      mat(0xffd24a, { emissive: 0x8a6a00, emissiveIntensity: 0.5, roughness: 0.4 })
-    );
-    m.scale.set(1, 1.4, 1);
-  } else {
-    // 青いひらめき（ヒント +1）
-    m = mesh(
-      new THREE.SphereGeometry(0.12, 6, 5),
-      mat(0x59c2ff, { emissive: 0x1266aa, emissiveIntensity: 0.6, roughness: 0.4 })
-    );
-  }
-  // 白い縁取り（数字より細め）: 同じ形を少し大きくして裏面だけ描画
-  const hull = new THREE.Mesh(
-    m.geometry,
-    new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.BackSide })
-  );
-  hull.scale.setScalar(1.14);
-  m.add(hull);
+// ---------- 段差地形（段々畑） ----------
+// 高さレベルごとに草の色を少し変えて、パッと見で段が分かるようにする
+const TERRACE_TOP = [0, 0x8fd465, 0x9cdb6f, 0xaae37b];
+const TERRACE_SIDE = 0x96683f;
 
-  m.position.y = 0.42; // ニンジンより低め（手前に置く前提）
-  g.add(m);
-  g.userData.spin = m;
+export function makeTerrain(heights) {
+  const g = new THREE.Group();
+  const c = (GRID - 1) / 2;
+  const sideMat = mat(TERRACE_SIDE);
+  const gridVerts = [];
+  for (let x = 0; x < GRID; x++) {
+    for (let y = 0; y < GRID; y++) {
+      const lvl = heights[x][y];
+      if (!lvl) continue;
+      const h = lvl * HSTEP;
+      const topMat = mat(TERRACE_TOP[Math.min(lvl, TERRACE_TOP.length - 1)]);
+      // 面ごとのマテリアル: [+x, -x, +y(上面), -y, +z, -z]
+      const box = new THREE.Mesh(new THREE.BoxGeometry(1, h, 1), [
+        sideMat,
+        sideMat,
+        topMat,
+        sideMat,
+        sideMat,
+        sideMat,
+      ]);
+      box.position.set(x - c, h / 2, y - c);
+      box.castShadow = true;
+      box.receiveShadow = true;
+      g.add(box);
+
+      // 段の上面にもマス目の線を描く（平地のグリッドと同じ見た目）
+      const gy = h + 0.012;
+      const x0 = x - c - 0.5;
+      const x1 = x - c + 0.5;
+      const z0 = y - c - 0.5;
+      const z1 = y - c + 0.5;
+      gridVerts.push(
+        x0, gy, z0, x1, gy, z0,
+        x1, gy, z0, x1, gy, z1,
+        x1, gy, z1, x0, gy, z1,
+        x0, gy, z1, x0, gy, z0
+      );
+    }
+  }
+  if (gridVerts.length) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(gridVerts, 3));
+    const lines = new THREE.LineSegments(
+      geo,
+      new THREE.LineBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.25,
+      })
+    );
+    g.add(lines);
+  }
   return g;
 }
 
@@ -477,4 +506,27 @@ export function makeRing(color = 0xfff05e) {
   ring.rotation.x = -Math.PI / 2;
   ring.position.y = 0.02;
   return ring;
+}
+
+// ---------- ヒントリング（白フチ付きピンク。緑の地面でも黄リングと見分けやすい） ----------
+export function makeHintRing() {
+  const g = new THREE.Group();
+  const flat = (r0, r1, color, y) => {
+    const m = new THREE.Mesh(
+      new THREE.RingGeometry(r0, r1, 24),
+      new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.95,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      })
+    );
+    m.rotation.x = -Math.PI / 2;
+    m.position.y = y;
+    return m;
+  };
+  g.add(flat(0.44, 0.68, 0xffffff, 0.024)); // 白フチ(下)
+  g.add(flat(0.485, 0.635, 0xff4f9e, 0.03)); // ピンク(上)
+  return g;
 }

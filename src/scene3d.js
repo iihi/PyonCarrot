@@ -5,10 +5,12 @@ import {
   makeGoalRabbit,
   makeTile,
   makeGoal,
-  makePickup,
   makeIsland,
   makeNumberSprite,
   makeRing,
+  makeHintRing,
+  makeTerrain,
+  HSTEP,
 } from './models.js';
 import { GRID } from './level.js';
 
@@ -94,6 +96,26 @@ export class GameScene {
     return new THREE.Vector3(gx - c, y, gy - c);
   }
 
+  // マス(gx,gy)の地形の高さ(ワールドY)
+  _cellY(gx, gy) {
+    return this.level ? this.level.heights[gx][gy] * HSTEP : 0;
+  }
+
+  // マス(gx,gy)の上にウサギが立つ高さ
+  _standY(gx, gy) {
+    return 0.22 + this._cellY(gx, gy);
+  }
+
+  // 吹き出し等のHTML配置用: マス上のワールド座標を画面ピクセルに変換
+  projectToScreen(gx, gy, yOffset = 0) {
+    const v = this.worldPos(gx, gy, this._cellY(gx, gy) + yOffset);
+    v.project(this.camera);
+    return {
+      x: (v.x * 0.5 + 0.5) * this.canvas.clientWidth,
+      y: (-v.y * 0.5 + 0.5) * this.canvas.clientHeight,
+    };
+  }
+
   resize() {
     const w = this.canvas.clientWidth || 1;
     const h = this.canvas.clientHeight || 1;
@@ -117,33 +139,44 @@ export class GameScene {
     for (const m of [...this._fx]) this._removeFx(m);
     this.tileMeshes = [];
 
+    // 段差地形（段々畑）
+    if (this.terrain) {
+      this.scene.remove(this.terrain);
+      this.terrain.traverse((c) => {
+        if (c.geometry) c.geometry.dispose();
+        if (c.material) {
+          (Array.isArray(c.material) ? c.material : [c.material]).forEach((m) =>
+            m.dispose()
+          );
+        }
+      });
+    }
+    this.terrain = makeTerrain(level.heights);
+    this.scene.add(this.terrain);
+
     level.tiles.forEach((t, i) => {
       const group = makeTile(t.value);
-      group.position.copy(this.worldPos(t.x, t.y));
+      const baseY = this._cellY(t.x, t.y);
+      group.position.copy(this.worldPos(t.x, t.y, baseY));
       const number = makeNumberSprite(t.value);
       number.visible = this.numbersVisible;
       group.add(number);
-      let pickup = null;
-      if (t.pickup) {
-        pickup = makePickup(t.pickup);
-        // ニンジンに埋もれないよう画面の手前(下)側へ
-        pickup.position.set(Math.SQRT1_2 * 0.34, 0, Math.SQRT1_2 * 0.34);
-        group.add(pickup);
-      }
       this.world.add(group);
-      this.tileMeshes.push({ group, number, pickup, baseY: 0, idx: i, alive: true });
+      this.tileMeshes.push({ group, number, baseY, idx: i, alive: true });
 
       // 登場アニメーション
-      group.position.y = -1.2;
+      group.position.y = baseY - 1.2;
       group.scale.setScalar(0.3);
       this.tween(0.45, i * 0.03, easeOut, (k) => {
-        group.position.y = -1.2 + 1.2 * k;
+        group.position.y = baseY - 1.2 * (1 - k);
         group.scale.setScalar(0.3 + 0.7 * k);
       });
     });
 
     this.goalMesh = makeGoal();
-    this.goalMesh.position.copy(this.worldPos(level.goal.x, level.goal.y));
+    this.goalMesh.position.copy(
+      this.worldPos(level.goal.x, level.goal.y, this._cellY(level.goal.x, level.goal.y))
+    );
     this.world.add(this.goalMesh);
     this.goalMesh.scale.setScalar(0.01);
     this.tween(0.5, level.tiles.length * 0.03, easeOut, (k) => {
@@ -151,10 +184,12 @@ export class GameScene {
     });
 
     // ウサギは登場シーン(playEntrance)まで隠しておく
+    // (スタートマスのニンジンは登場後にウサギが食べる)
     const start = level.tiles[0];
-    this.tileMeshes[0].group.userData.carrots.visible = false;
     this.rabbit.visible = false;
-    this.rabbit.position.copy(this.worldPos(start.x, start.y, 0.22));
+    this.rabbit.position.copy(
+      this.worldPos(start.x, start.y, this._standY(start.x, start.y))
+    );
     this.rabbit.rotation.set(0, Math.PI / 4, 0);
     this.rabbit.scale.setScalar(1);
 
@@ -205,9 +240,21 @@ export class GameScene {
   playEntrance() {
     return new Promise((resolve) => {
       const start = this.level.tiles[0];
-      const goalP = this.worldPos(start.x, start.y, 0.22);
+      const goalP = this.worldPos(start.x, start.y, this._standY(start.x, start.y));
       const fwd = { x: Math.SQRT1_2, z: Math.SQRT1_2 }; // 画面の手前方向
       const side = { x: Math.SQRT1_2, z: -Math.SQRT1_2 }; // 画面の横方向
+
+      // ポータル周辺のマスが平地(高さ0)かどうか
+      const c0 = (GRID - 1) / 2;
+      const flatAround = (wx, wz) => {
+        for (let gx = Math.floor(wx + c0 - 0.55); gx <= Math.ceil(wx + c0 + 0.55); gx++) {
+          for (let gz = Math.floor(wz + c0 - 0.55); gz <= Math.ceil(wz + c0 + 0.55); gz++) {
+            if (gx < 0 || gz < 0 || gx >= GRID || gz >= GRID) continue;
+            if (this.level.heights[gx][gz] > 0) return false;
+          }
+        }
+        return true;
+      };
 
       // ポータル位置: 基本は画面の真下。他のマスと重なる場合は
       // 右下→左下→さらに下…の順で空いている草地を探す
@@ -230,6 +277,7 @@ export class GameScene {
           goalP.z + fwd.z * f + side.z * sd
         );
         if (Math.hypot(c.x, c.z) > 7.2) continue; // 島から出ない
+        if (!flatAround(c.x, c.z)) continue; // 段差地形の上にはポータルを出さない
         let clearance = Infinity;
         for (const o of others) {
           clearance = Math.min(clearance, Math.hypot(o.x - c.x, o.z - c.z));
@@ -292,14 +340,16 @@ export class GameScene {
           camFace + Math.atan2(Math.sin(face - camFace), Math.cos(face - camFace)) * k;
       }, null, 'rabbit');
 
-      // 通常の移動と同じ「ぴょーん」でスタートマスへ
+      // 通常の移動と同じ「ぴょーん」でスタートマスへ（高台スタートにも対応）
+      const entryArc = 0.7 + Math.max(0, goalP.y - 0.22) * 0.9;
       this.tween(0.38, 1.25, (t) => t, (k) => {
         this.rabbit.position.lerpVectors(
           new THREE.Vector3(pp.x, 0.06, pp.z),
           goalP,
           k
         );
-        this.rabbit.position.y = 0.06 + (0.22 - 0.06) * k + 0.7 * 4 * k * (1 - k);
+        this.rabbit.position.y =
+          0.06 + (goalP.y - 0.06) * k + entryArc * 4 * k * (1 - k);
         const e = Math.sin(k * Math.PI);
         this.rabbit.scale.set(1 - 0.06 * e, 1 - 0.09 * e, 1 + 0.2 * e);
         this.rabbit.rotation.x = 0.6 * e * (k - 0.5);
@@ -402,8 +452,18 @@ export class GameScene {
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * this.camera.aspect);
     // 横: マス+リング分の余白 / 縦: 見下ろしで縮む(≈0.87)+HUDと被らないよう縦視野は74%だけ使う
     // 下限(3.2)を設けて、マスが少ないステージで寄りすぎないようにする
+    // 段差がある場合は高さぶんの余白も足す
+    let maxHLvl = 0;
+    if (this.level.heights) {
+      for (let x = 0; x < GRID; x++) {
+        for (let y = 0; y < GRID; y++) {
+          maxHLvl = Math.max(maxHLvl, this.level.heights[x][y]);
+        }
+      }
+    }
+    const hPad = maxHLvl * HSTEP * 0.6;
     const halfW = Math.max(maxS + 1.15, 3.2);
-    const halfH = Math.max(maxT * 0.87 + 1.15, 2.7);
+    const halfH = Math.max(maxT * 0.87 + 1.15 + hPad, 2.7);
     const dist = Math.max(
       halfW / Math.tan(hFov / 2),
       halfH / (Math.tan(vFov / 2) * 0.74)
@@ -427,7 +487,8 @@ export class GameScene {
 
   // ---------- 点滅表示 ----------
   clearRings() {
-    for (const r of this.rings) r.parent && r.parent.remove(r);
+    this.clearHint();
+    for (const r of this.rings) r.mesh.parent && r.mesh.parent.remove(r.mesh);
     this.rings = [];
   }
 
@@ -438,25 +499,32 @@ export class GameScene {
       const parent =
         item === 'goal' ? this.goalMesh : this.tileMeshes[item].group;
       parent.add(ring);
-      this.rings.push(ring);
+      this.rings.push({ mesh: ring, id: item });
     }
   }
 
+  // ヒント: 対象の黄色リングを「白フチ付きピンク」に差し替える
+  // (時間では消えず、プレイヤーが移動するまで表示され続ける)
   showHint(target) {
     this.clearHint();
-    const ring = makeRing(0x59c2ff);
-    ring.scale.setScalar(0.85);
+    const entry = this.rings.find((r) => r.id === target);
+    if (entry) entry.mesh.visible = false; // 黄リングを一旦隠す
+    this._hintHidden = entry || null;
+    const marker = makeHintRing();
     const parent =
       target === 'goal' ? this.goalMesh : this.tileMeshes[target].group;
-    parent.add(ring);
-    this.hintMarker = ring;
-    setTimeout(() => this.clearHint(), 3500);
+    parent.add(marker);
+    this.hintMarker = marker;
   }
 
   clearHint() {
     if (this.hintMarker) {
       this.hintMarker.parent && this.hintMarker.parent.remove(this.hintMarker);
       this.hintMarker = null;
+    }
+    if (this._hintHidden) {
+      this._hintHidden.mesh.visible = true; // 黄リングを戻す
+      this._hintHidden = null;
     }
   }
 
@@ -503,15 +571,17 @@ export class GameScene {
     return new Promise((resolve) => {
       const from = this.level.tiles[fromIdx];
       const to = target === 'goal' ? this.level.goal : this.level.tiles[target];
-      const p0 = this.worldPos(from.x, from.y, 0.22);
-      const p1 = this.worldPos(to.x, to.y, 0.22);
+      const p0 = this.worldPos(from.x, from.y, this._standY(from.x, from.y));
+      const p1 = this.worldPos(to.x, to.y, this._standY(to.x, to.y));
       // ゴールでは2匹が台座に並ぶよう、白ウサギは左寄りに着地する
       if (target === 'goal') {
         p1.x += Math.SQRT1_2 * -0.44;
         p1.z += -Math.SQRT1_2 * -0.44;
       }
       const dist = Math.abs(to.x - from.x) + Math.abs(to.y - from.y);
-      const height = 0.95 + dist * 0.32;
+      // 上りのときは頂点を高くして、段をしっかり越える弧を描く
+      const climb = Math.max(0, p1.y - p0.y);
+      const height = 0.95 + dist * 0.32 + climb * 0.9;
       const crouchDur = 0.12;
       const flightDur = 0.36 + dist * 0.08;
 
@@ -545,7 +615,8 @@ export class GameScene {
       // 2) 飛行：高い弧を描き、進行方向へ体が伸びる（前後に長く・上下に薄く）
       this.tween(flightDur, crouchDur, (t) => t, (k) => {
         this.rabbit.position.lerpVectors(p0, p1, k);
-        this.rabbit.position.y = 0.22 + height * 4 * k * (1 - k);
+        this.rabbit.position.y =
+          p0.y + (p1.y - p0.y) * k + height * 4 * k * (1 - k);
         const e = Math.sin(k * Math.PI);
         this.rabbit.scale.set(1 - 0.06 * e, 1 - 0.09 * e, 1 + 0.2 * e);
         // 上昇中はのけぞり、下降中は前傾（軌道に体を沿わせる）
@@ -577,7 +648,7 @@ export class GameScene {
     const g = tm.group;
     this.killTweens(`tile${idx}`);
     this.tween(0.5, 0.12, easeInOut, (k) => {
-      g.position.y = -1.3 * k;
+      g.position.y = tm.baseY - 1.3 * k;
       g.scale.setScalar(Math.max(1 - k, 0.01));
     }, () => {
       if (!tm.alive) g.visible = false;
@@ -593,7 +664,7 @@ export class GameScene {
       g.visible = true;
       this.killTweens(`tile${restoreIdx}`);
       this.tween(0.35, 0, easeOut, (k) => {
-        g.position.y = -1.3 * (1 - k);
+        g.position.y = tm.baseY - 1.3 * (1 - k);
         g.scale.setScalar(Math.max(0.01, k));
       }, null, `tile${restoreIdx}`);
 
@@ -602,13 +673,14 @@ export class GameScene {
           ? this.level.goal
           : this.level.tiles[fromTarget];
       const to = this.level.tiles[restoreIdx];
-      const p0 = this.worldPos(from.x, from.y, 0.22);
-      const p1 = this.worldPos(to.x, to.y, 0.22);
+      const p0 = this.worldPos(from.x, from.y, this._standY(from.x, from.y));
+      const p1 = this.worldPos(to.x, to.y, this._standY(to.x, to.y));
       this.rabbit.rotation.y = Math.atan2(p1.x - p0.x, p1.z - p0.z);
       this.killTweens('rabbit');
       this.tween(0.35, 0.05, (t) => t, (k) => {
         this.rabbit.position.lerpVectors(p0, p1, k);
-        this.rabbit.position.y = 0.22 + 0.8 * 4 * k * (1 - k);
+        this.rabbit.position.y =
+          p0.y + (p1.y - p0.y) * k + 0.8 * 4 * k * (1 - k);
       }, () => {
         this.rabbit.position.copy(p1);
         resolve();
@@ -630,28 +702,7 @@ export class GameScene {
     }, `carrot${idx}`);
   }
 
-  // まきもどしで復元されたマスのニンジンを戻す
-  restoreCarrots(idx) {
-    const c = this.tileMeshes[idx].group.userData.carrots;
-    this.killTweens(`carrot${idx}`);
-    c.visible = true;
-    this.tween(0.25, 0, easeOut, (k) => {
-      c.scale.setScalar(Math.max(0.01, k));
-    }, null, `carrot${idx}`);
-  }
-
-  collectPickup(idx) {
-    const tm = this.tileMeshes[idx];
-    if (!tm.pickup) return;
-    const p = tm.pickup;
-    tm.pickup = null;
-    this.tween(0.4, 0, easeOut, (k) => {
-      p.position.y = k * 1.2;
-      p.scale.setScalar(Math.max(0.01, 1 - k));
-    }, () => {
-      tm.group.remove(p);
-    });
-  }
+  // ※まきもどしで復元されたマスは「食べたあと」なのでニンジンは戻さない
 
   celebrate() {
     this.goalCollected = true;
@@ -681,11 +732,12 @@ export class GameScene {
 
     // 2) 見つめ合ったまま、同じタイミングで一緒にジャンプ×2（左右に揺れながら）
     const baseB = bunny ? bunny.position.y : 0;
+    const baseR = rb.position.y; // ゴールの地形の高さ基準
     for (let i = 0; i < 2; i++) {
       this.tween(0.42, 0.32 + i * 0.5, (t) => t, (k) => {
         const arc = 4 * k * (1 - k);
         const tilt = 0.13 * Math.sin(k * Math.PI * 2);
-        rb.position.y = 0.22 + 0.85 * arc;
+        rb.position.y = baseR + 0.85 * arc;
         rb.rotation.z = tilt;
         if (bunny) {
           bunny.position.y = baseB + 0.6 * arc;
@@ -732,7 +784,9 @@ export class GameScene {
   screenDirTo(target) {
     const to = target === 'goal' ? this.level.goal : this.level.tiles[target];
     const p0 = this.rabbit.position.clone().project(this.camera);
-    const p1 = this.worldPos(to.x, to.y, 0.22).project(this.camera);
+    const p1 = this.worldPos(to.x, to.y, this._standY(to.x, to.y)).project(
+      this.camera
+    );
     return { x: p1.x - p0.x, y: p1.y - p0.y };
   }
 
@@ -756,11 +810,13 @@ export class GameScene {
     // 点滅リング
     const pulse = 0.55 + 0.45 * Math.sin(this.time * 5);
     for (const r of this.rings) {
-      r.material.opacity = 0.35 + 0.55 * pulse;
-      r.scale.setScalar(1 + 0.08 * pulse);
+      r.mesh.material.opacity = 0.35 + 0.55 * pulse;
+      r.mesh.scale.setScalar(1 + 0.08 * pulse);
     }
     if (this.hintMarker) {
-      this.hintMarker.material.opacity = 0.5 + 0.5 * Math.sin(this.time * 8);
+      const o = 0.55 + 0.45 * Math.sin(this.time * 8);
+      for (const m of this.hintMarker.children) m.material.opacity = o;
+      this.hintMarker.scale.setScalar(1 + 0.06 * pulse);
     }
 
     // ゴールのピンクウサギの待機モーション
@@ -793,12 +849,7 @@ export class GameScene {
       }
     }
     if (this.goalMesh) {
-      // 金リングの明滅と旗の揺れ
-      const glow = this.goalMesh.userData.glow;
-      if (glow) {
-        glow.material.opacity = 0.35 + 0.3 * Math.sin(this.time * 3);
-        glow.scale.setScalar(1.12 + 0.06 * Math.sin(this.time * 3));
-      }
+      // 旗の揺れ
       const flag = this.goalMesh.userData.flag;
       if (flag) flag.rotation.y = Math.PI / 4 + Math.sin(this.time * 4) * 0.18;
     }
@@ -842,13 +893,6 @@ export class GameScene {
         e.mesh.rotation.x = e.baseX + twitch - 0.5 * this.jumpPose;
       }
     }
-    for (const t of this.tileMeshes) {
-      if (t.pickup) {
-        t.pickup.userData.spin.rotation.y += dt * 2.5;
-        t.pickup.userData.spin.position.y = 0.42 + Math.sin(this.time * 3 + t.idx) * 0.05;
-      }
-    }
-
     // 極小ウサギがゆっくり行き来する（にぎやかし）
     const miniSide = { x: Math.SQRT1_2, z: -Math.SQRT1_2 };
     for (const m of this.minis) {
