@@ -352,13 +352,10 @@ export class Game {
       // 登場したらスタートマスのニンジンをまず1口
       this._eatTile(0);
       this.scene.setOnSpring(!!this.level.tiles[0].spring);
-      if (this.level.tiles[0].spring) {
-        this._toastOnce('_tut_spring', 'ジャンプ台！🦘 ここからは2マスとおくまで飛べる！');
-      }
       this.state = 'playing';
       this._updateHUD();
       this._updateReachable();
-      this._maybeShowHeightTutorial();
+      this._maybeShowGimmickTutorial();
     });
   }
 
@@ -394,59 +391,83 @@ export class Game {
     setTimeout(() => el.remove(), 1000);
   }
 
-  // ---------- 段差の初回チュートリアル ----------
-  // 段差のあるステージを初めて遊ぶとき、一番高いマスに吹き出しを出す。
-  // ウサギを動かしたら消えて、以降は表示しない。
-  _maybeShowHeightTutorial() {
-    try {
-      if (localStorage.getItem(SAVE_KEY + '_tut_h')) return;
-    } catch (e) {}
-    // 段差のあるマス全てを候補にする
-    const cands = this.level.tiles.filter(
-      (t) => this.level.heights[t.x][t.y] > 0
-    );
-    if (!cands.length) return; // 段差のないステージ
+  // ---------- ギミックの初回チュートリアル吹き出し ----------
+  // 段差・ジャンプ台・氷が初めて登場するステージで、該当マスに吹き出しを出す。
+  // ウサギを動かしたら消えて、以降は表示しない。1ステージにつき1件（優先順）。
+  _maybeShowGimmickTutorial() {
+    const TUTS = [
+      {
+        flag: '_tut_h',
+        pick: (t) => this.level.heights[t.x][t.y] > 0,
+        prefer: (t) => this.level.heights[t.x][t.y] * 20,
+        html: '⛰️ 高いところへ上るには<br />パワーが<b>1つ多く</b>ひつよう！<br />降りるときは<b>1つ遠くへ</b>飛べるよ',
+      },
+      {
+        flag: '_tut_spring',
+        pick: (t) => !!t.spring,
+        prefer: () => 0,
+        html: '🦘 <b>ジャンプ台</b>のマス！<br />ここから飛ぶと<b>2マス遠くまで</b>とべるよ',
+      },
+      {
+        flag: '_tut_ice',
+        pick: (t) => !!t.ice,
+        prefer: () => 0,
+        html: '❄️ <b>こおり</b>のマス！<br />乗るとすべって<b>次のマスまで</b>止まらないよ',
+      },
+    ];
 
-    const cw = this.scene.canvas.clientWidth;
-    // 避けたい場所: プレイヤーうさぎ・次に飛べるマス
-    const cur = this.level.tiles[this.cur];
-    const avoid = [this.scene.projectToScreen(cur.x, cur.y, 0.6)];
-    for (const id of this.reachable || []) {
-      const t = id === 'goal' ? this.level.goal : this.level.tiles[id];
-      avoid.push(this.scene.projectToScreen(t.x, t.y, 0.4));
-    }
+    for (const tut of TUTS) {
+      try {
+        if (localStorage.getItem(SAVE_KEY + tut.flag)) continue;
+      } catch (e) {}
+      const cands = this.level.tiles.filter(tut.pick);
+      if (!cands.length) continue;
 
-    // 吹き出し(幅約240px・高さ約90px)の中心が避けたい点から遠い候補を選ぶ
-    let best = null;
-    for (const t of cands) {
-      const p = this.scene.projectToScreen(t.x, t.y, 1.5);
-      const bx = Math.min(Math.max(p.x, 132), cw - 132); // 画面内に収める
-      const by = p.y - 52;
-      let pen = 0;
-      if (p.y - 110 < 0) pen += 500; // 画面上にはみ出す
-      for (const a of avoid) {
-        pen += Math.max(0, 175 - Math.hypot(a.x - bx, a.y - by)) * 3;
+      const cw = this.scene.canvas.clientWidth;
+      // 避けたい場所: プレイヤーうさぎ・次に飛べるマス
+      const cur = this.level.tiles[this.cur];
+      const avoid = [this.scene.projectToScreen(cur.x, cur.y, 0.6)];
+      for (const id of this.reachable || []) {
+        const t = id === 'goal' ? this.level.goal : this.level.tiles[id];
+        avoid.push(this.scene.projectToScreen(t.x, t.y, 0.4));
       }
-      pen -= this.level.heights[t.x][t.y] * 20; // 同条件なら高いマス優先
-      if (!best || pen < best.pen) best = { pen, x: bx, y: p.y };
-    }
 
-    const el = $('tut-balloon');
-    el.style.left = `${best.x}px`;
-    el.style.top = `${best.y}px`;
-    el.classList.remove('hidden');
-    this._tutShown = true;
+      // 吹き出し(幅約240px・高さ約90px)の中心が避けたい点から遠い候補を選ぶ
+      let best = null;
+      for (const t of cands) {
+        const p = this.scene.projectToScreen(t.x, t.y, 1.5);
+        const bx = Math.min(Math.max(p.x, 132), cw - 132); // 画面内に収める
+        const by = p.y - 52;
+        let pen = 0;
+        if (p.y - 110 < 0) pen += 500; // 画面上にはみ出す
+        for (const a of avoid) {
+          pen += Math.max(0, 175 - Math.hypot(a.x - bx, a.y - by)) * 3;
+        }
+        pen -= tut.prefer(t);
+        if (!best || pen < best.pen) best = { pen, x: bx, y: p.y };
+      }
+
+      const el = $('tut-balloon');
+      el.innerHTML = tut.html;
+      el.style.left = `${best.x}px`;
+      el.style.top = `${best.y}px`;
+      el.classList.remove('hidden');
+      this._tutShown = true;
+      this._tutFlag = tut.flag;
+      return; // 1ステージ1件まで
+    }
   }
 
   _hideTutorial(learned) {
     if (!this._tutShown) return;
     $('tut-balloon').classList.add('hidden');
     this._tutShown = false;
-    if (learned) {
+    if (learned && this._tutFlag) {
       try {
-        localStorage.setItem(SAVE_KEY + '_tut_h', '1');
+        localStorage.setItem(SAVE_KEY + this._tutFlag, '1');
       } catch (e) {}
     }
+    this._tutFlag = null;
   }
 
   // ---------- HUD ----------
@@ -513,7 +534,6 @@ export class Game {
     // 氷スライド
     if (resolved.eaten.length > 1) {
       this.sfx.slide();
-      this._toastOnce('_tut_ice', 'つるつる〜！❄️ こおりのマスはすべって止まらない！');
       await this.scene.slideAlong(resolved.eaten);
       for (let k = 1; k < resolved.eaten.length; k++) {
         this._eatTile(resolved.eaten[k]);
@@ -521,11 +541,7 @@ export class Game {
     }
 
     this.cur = resolved.finalIdx;
-    const landed = this.level.tiles[this.cur];
-    this.scene.setOnSpring(!!landed.spring);
-    if (landed.spring) {
-      this._toastOnce('_tut_spring', 'ジャンプ台！🦘 ここからは2マスとおくまで飛べる！');
-    }
+    this.scene.setOnSpring(!!this.level.tiles[this.cur].spring);
 
     this.state = 'playing';
     this._updateHUD();
