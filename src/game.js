@@ -260,6 +260,10 @@ export class Game {
   _showTitle() {
     this.state = 'title';
     this._hideTutorial(false);
+    this._cancelClearSeq();
+    for (const id of ['modal-help', 'modal-continue', 'modal-clear', 'modal-over', 'modal-share']) {
+      this._hide(id);
+    }
     this._show('screen-title');
     this._hide('hud');
     const hi = $('title-hiscore');
