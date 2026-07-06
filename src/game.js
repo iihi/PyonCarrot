@@ -6,7 +6,7 @@ import {
   resolveMove,
   makeCode,
   parseCode,
-  GOLD_CARROTS,
+  GOLD_MULT,
 } from './level.js';
 import { GameScene } from './scene3d.js';
 import { Sfx } from './sfx.js';
@@ -373,12 +373,12 @@ export class Game {
     const tile = this.level.tiles[idx];
     if (tile.eaten) return;
     tile.eaten = true;
-    const gain = tile.golden ? GOLD_CARROTS : tile.value;
+    const gain = tile.golden ? tile.value * GOLD_MULT : tile.value;
     this.carrots += gain;
     this.scene.eatCarrots(idx);
     this._carrotPop(tile.x, tile.y, gain);
     if (tile.golden) {
-      this._toastOnce('_tut_gold', `大ニンジン！✨ ${GOLD_CARROTS}本分ゲット！`);
+      this._toastOnce('_tut_gold', `大ニンジン！✨ 1本で${GOLD_MULT}本分！`);
     }
   }
 

@@ -156,14 +156,25 @@ export function makeTile(tile) {
   const g = new THREE.Group();
   const value = tile.value;
 
+  // ジャンプ台は土台ごとトランポリン風(赤い側面+白バンド)。上面は土のままでニンジンが刺さる
   const mound = mesh(
     new THREE.CylinderGeometry(0.4, 0.5, 0.18, 7),
-    mat(0x9c6b45),
+    mat(tile.spring ? 0xe04848 : 0x9c6b45),
     0,
     0.09,
     0
   );
   g.add(mound);
+  if (tile.spring) {
+    const band = mesh(
+      new THREE.CylinderGeometry(0.46, 0.47, 0.055, 7),
+      mat(0xffffff, { roughness: 0.6 }),
+      0,
+      0.07,
+      0
+    );
+    g.add(band);
+  }
   // 氷マスは上面がつるっとした青
   const top = mesh(
     new THREE.CylinderGeometry(0.38, 0.41, 0.05, 7),
@@ -196,33 +207,6 @@ export function makeTile(tile) {
   g.add(carrots);
   g.userData.carrots = carrots;
 
-  // ジャンプ台: 手前に赤いトランポリン
-  if (tile.spring) {
-    const base = mesh(
-      new THREE.CylinderGeometry(0.2, 0.22, 0.05, 8),
-      mat(0x7a4020),
-      FWD_AXIS.x * 0.3,
-      0.23,
-      FWD_AXIS.z * 0.3
-    );
-    g.add(base);
-    const pad = mesh(
-      new THREE.CylinderGeometry(0.17, 0.19, 0.035, 8),
-      mat(0xef4444, { roughness: 0.6 }),
-      FWD_AXIS.x * 0.3,
-      0.27,
-      FWD_AXIS.z * 0.3
-    );
-    g.add(pad);
-    const dot = mesh(
-      new THREE.CylinderGeometry(0.07, 0.07, 0.037, 8),
-      mat(0xffffff),
-      FWD_AXIS.x * 0.3,
-      0.272,
-      FWD_AXIS.z * 0.3
-    );
-    g.add(dot);
-  }
   return g;
 }
 

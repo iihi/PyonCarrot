@@ -163,7 +163,14 @@ export class GameScene {
       number.visible = this.numbersVisible;
       group.add(number);
       this.world.add(group);
-      this.tileMeshes.push({ group, number, baseY, idx: i, alive: true });
+      this.tileMeshes.push({
+        group,
+        number,
+        baseY,
+        idx: i,
+        alive: true,
+        spring: !!t.spring,
+      });
 
       // 登場アニメーション
       group.position.y = baseY - 1.2;
@@ -950,6 +957,15 @@ export class GameScene {
         e.mesh.rotation.x = e.baseX + twitch - 0.5 * this.jumpPose;
       }
     }
+    // ジャンプ台のマスは常時ぽよんぽよん弾む（動きで見分けられるように）
+    for (const t of this.tileMeshes) {
+      if (!t.spring || !t.alive || !t.group.visible) continue;
+      // 登場/沈み中(スケールが1でない)は触らない
+      if (Math.abs(t.group.scale.x - 1) > 0.05) continue;
+      const b = Math.abs(Math.sin(this.time * 4.5 + t.idx * 1.3));
+      t.group.scale.y = 0.94 + 0.1 * b;
+    }
+
     // 極小ウサギがゆっくり行き来する（にぎやかし）
     const miniSide = { x: Math.SQRT1_2, z: -Math.SQRT1_2 };
     for (const m of this.minis) {

@@ -18,7 +18,7 @@ export const MAX_TILES = 30;
 export const MAX_HEIGHT = 3; // 高さレベル0〜3(=段差3段)
 
 export const SPRING_BONUS = 2; // ジャンプ台で伸びる距離
-export const GOLD_CARROTS = 5; // 大ニンジンの獲得本数
+export const GOLD_MULT = 5; // 大ニンジンは1本で5本分(獲得 = 本数 × 5)
 
 // ギミックの解禁ステージと出現率・上限
 const GOLD_STAGE = 3;
