@@ -212,10 +212,11 @@ export function makeTile(tile) {
     railGroup.add(arrow);
 
     const cart = new THREE.Group();
-    const wood = mat(0x9a6636, { roughness: 0.75 });
-    const woodDark = mat(0x7a4e28, { roughness: 0.75 });
-    const metal = mat(0x9aa3ad, { roughness: 0.35, metalness: 0.5 });
-    const metalDark = mat(0x6b7079, { roughness: 0.4, metalness: 0.5 });
+    // 畑(茶)にも草(緑)にも埋もれない青系メタル
+    const wood = mat(0x3f8fd0, { roughness: 0.45, metalness: 0.45 });
+    const woodDark = mat(0x2f6ea8, { roughness: 0.5, metalness: 0.45 });
+    const metal = mat(0xcfe4f2, { roughness: 0.3, metalness: 0.55 });
+    const metalDark = mat(0x24506f, { roughness: 0.4, metalness: 0.5 });
     const W = 0.56, L = 0.6, H = 0.32, TH = 0.055;
     const floorY = 0.36;
 
