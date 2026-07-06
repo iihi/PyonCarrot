@@ -16,7 +16,6 @@ const COST_REWIND = 3; // まきもどしのニンジン消費
 const COST_HINT = 5; // ヒントのニンジン消費
 const SCORE_PER_CARROT = 10; // 残ニンジン1本あたりのスコア
 const NO_HINT_BONUS = 100; // ヒント未使用クリアのボーナス
-const scoreBase = (stage) => 100 + 20 * Math.min(stage, 30); // クリア基礎スコア(30で頭打ち)
 const retryMult = (r) => (r === 0 ? 1.5 : r >= 3 ? 0.5 : 1.0); // リトライ倍率
 
 const $ = (id) => document.getElementById(id);
@@ -505,12 +504,11 @@ export class Game {
     this.scene.celebrate();
     this.sfx.clear();
 
-    // スコア計算: (基礎 + 残ニンジン×10 + ノーヒントボーナス) × リトライ倍率
-    const base = scoreBase(this.stage);
+    // スコア計算: (残ニンジン×10 + ノーヒントボーナス) × リトライ倍率
     const carrotBonus = this.carrots * SCORE_PER_CARROT;
     const noHint = this.hintsUsed === 0 ? NO_HINT_BONUS : 0;
     const mult = retryMult(this.retryCount);
-    const gain = Math.round((base + carrotBonus + noHint) * mult);
+    const gain = Math.round((carrotBonus + noHint) * mult);
     this.score += gain;
     if (this.score > this.hiscore) {
       this.hiscore = this.score;
@@ -524,7 +522,7 @@ export class Game {
     setTimeout(() => {
       if (this.state !== 'clear') return;
       this._show('modal-clear');
-      this._playClearSequence({ base, carrotBonus, noHint, mult, gain });
+      this._playClearSequence({ carrotBonus, noHint, mult, gain });
     }, 1500);
   }
 
@@ -535,7 +533,6 @@ export class Game {
     const later = (ms, fn) => timers.push(setTimeout(fn, ms));
 
     const rows = {
-      base: $('sb-base-row'),
       carrots: $('sb-carrots-row'),
       nohint: $('sb-nohint-row'),
       mult: $('sb-mult-row'),
@@ -551,7 +548,6 @@ export class Game {
     }
 
     // 値をセット（ニンジンはカウントアップで後から入る）
-    $('sb-base').textContent = `+${fmt(d.base)}`;
     $('sb-carrots-n').textContent = 0;
     $('sb-carrots').textContent = '+0';
     $('sb-nohint').textContent = `+${fmt(NO_HINT_BONUS)}`;
@@ -569,13 +565,12 @@ export class Game {
       this.sfx.thud();
     };
 
-    later(200, () => pop(rows.base));
-    later(600, () => {
+    later(250, () => {
       pop(rows.carrots);
       this._flyCarrots(this.carrots);
       this._countUpCarrots(this.carrots);
     });
-    let t = 1750;
+    let t = 1400;
     if (d.noHint) {
       later(t, () => pop(rows.nohint));
       t += 380;
