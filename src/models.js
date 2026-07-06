@@ -202,6 +202,10 @@ export function makeTile(tile) {
     );
     carrots.add(c);
   }
+  // 大ニンジンは名前どおり見た目も大きく（本数が多いほど控えめに拡大）
+  if (tile.golden) {
+    carrots.scale.setScalar(value === 1 ? 1.4 : value === 2 ? 1.25 : 1.15);
+  }
   // 数字バッジと被らないよう、全体を画面の少し下(手前)へずらす
   carrots.position.set(FWD_AXIS.x * 0.1, 0, FWD_AXIS.z * 0.1);
   g.add(carrots);
