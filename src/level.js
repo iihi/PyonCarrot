@@ -252,10 +252,19 @@ function tryGenerate(rand, n, seed, stage, heights) {
   let springs = 0;
   let carts = 0;
 
+  // 背の高いギミック(ジャンプ台・トロッコ)は隣り合うと立体表示で重なって見えるため、
+  // 互いに1マス以上(周囲8マス)離す
+  const nearTall = (x, y) =>
+    tiles.some(
+      (t) => (t.spring || t.cart) && Math.abs(t.x - x) <= 1 && Math.abs(t.y - y) <= 1
+    );
+
   const rollFlags = (tile) => {
     if (springs < MAX_SPRING && rand() < pSpring) {
-      tile.spring = true;
-      springs++;
+      if (!nearTall(tile.x, tile.y)) {
+        tile.spring = true;
+        springs++;
+      }
     } else if (golds < MAX_GOLD && rand() < pGold) {
       tile.golden = true;
       golds++;
@@ -303,7 +312,7 @@ function tryGenerate(rand, n, seed, stage, heights) {
     // トロッコ: cur→トロッコに飛び乗る→レール方向へ空きマスを進み段差/端で停止(大破)→
     // 停止セルSから「トロッコの数字」ぶんジャンプして次マスTへ。C・Tを同時に配置する。
     let madeCart = false;
-    if (carts < MAX_CARTS && tiles.length + 2 <= n && rand() < pCart) {
+    if (carts < MAX_CARTS && tiles.length + 2 <= n && rand() < pCart && !nearTall(o.nx, o.ny)) {
       const cx = o.nx;
       const cy = o.ny;
       const hc = heights[cx][cy];

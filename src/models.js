@@ -152,11 +152,12 @@ const CARROT_LAYOUT = {
   ],
 };
 
-// コイルバネ(ジャンプ台)。土台いっぱいの大きな螺旋+天板。紫で目立たせる。
+// コイルバネ(ジャンプ台)。土台いっぱいの大きな螺旋+天板。金属光沢のシルバー。
 function makeSpring() {
   const g = new THREE.Group();
-  const coilMat = mat(0x9b5cff, { roughness: 0.3, metalness: 0.55 });
-  const plateMat = mat(0xffd24a, { roughness: 0.35, metalness: 0.5 });
+  // コイルは明るい光沢シルバー、上下の皿は一段濃いシルバー
+  const coilMat = mat(0xe2e7ee, { roughness: 0.22, metalness: 0.75 });
+  const plateMat = mat(0x9aa2ad, { roughness: 0.32, metalness: 0.7 });
   const baseY = 0.2;
   const h = 0.4;
   const r = 0.32; // 台座(半径0.4)いっぱい
@@ -630,27 +631,4 @@ export function makeRing(color = 0xfff05e) {
   ring.rotation.x = -Math.PI / 2;
   ring.position.y = 0.02;
   return ring;
-}
-
-// ---------- ヒントリング（白フチ付きピンク。緑の地面でも黄リングと見分けやすい） ----------
-export function makeHintRing() {
-  const g = new THREE.Group();
-  const flat = (r0, r1, color, y) => {
-    const m = new THREE.Mesh(
-      new THREE.RingGeometry(r0, r1, 24),
-      new THREE.MeshBasicMaterial({
-        color,
-        transparent: true,
-        opacity: 0.95,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-      })
-    );
-    m.rotation.x = -Math.PI / 2;
-    m.position.y = y;
-    return m;
-  };
-  g.add(flat(0.44, 0.68, 0xffffff, 0.024)); // 白フチ(下)
-  g.add(flat(0.485, 0.635, 0xff4f9e, 0.03)); // ピンク(上)
-  return g;
 }

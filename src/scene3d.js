@@ -8,7 +8,6 @@ import {
   makeIsland,
   makeNumberSprite,
   makeRing,
-  makeHintRing,
   makeTerrain,
   HSTEP,
 } from './models.js';
@@ -69,8 +68,8 @@ export class GameScene {
     this.tileMeshes = [];
     this.goalMesh = null;
     this.minis = []; // にぎやかしの極小ウサギ
-    this.rings = [];
-    this.hintMarker = null;
+    this.reach = []; // 今飛べるマス(マス全体を明滅させて示す)
+    this.hintId = null; // ヒント対象(別色で明滅)
     this.tweens = [];
     this.clock = new THREE.Clock();
     this.time = 0;
@@ -494,47 +493,47 @@ export class GameScene {
     }
   }
 
-  // ---------- 点滅表示 ----------
+  // ---------- 到達マスの明滅表示 ----------
+  // 枠(リング)は段差や密集で隠れて見えなくなるので廃止。
+  // 代わりにマスのモデル全体を発光させて明滅させる(_frameで脈動)。
   clearRings() {
-    this.clearHint();
-    for (const r of this.rings) r.mesh.parent && r.mesh.parent.remove(r.mesh);
-    this.rings = [];
+    for (const r of this.reach) {
+      for (const mm of r.mats) {
+        mm.m.emissive.setHex(mm.e);
+        mm.m.emissiveIntensity = mm.i;
+      }
+    }
+    this.reach = [];
+    this.hintId = null;
   }
 
   setReachable(list) {
     this.clearRings();
     for (const item of list) {
-      const ring = makeRing(item === 'goal' ? 0xffd24a : 0xfffb8f);
-      const parent =
-        item === 'goal' ? this.goalMesh : this.tileMeshes[item].group;
-      parent.add(ring);
-      this.rings.push({ mesh: ring, id: item });
+      const group = item === 'goal' ? this.goalMesh : this.tileMeshes[item].group;
+      if (!group) continue;
+      // 発光を戻せるよう、各マテリアルの元の emissive を控えておく
+      const mats = [];
+      group.traverse((c) => {
+        if (!c.material) return;
+        const arr = Array.isArray(c.material) ? c.material : [c.material];
+        for (const m of arr) {
+          if (!m.emissive) continue;
+          mats.push({ m, e: m.emissive.getHex(), i: m.emissiveIntensity });
+        }
+      });
+      this.reach.push({ id: item, mats });
     }
   }
 
-  // ヒント: 対象の黄色リングを「白フチ付きピンク」に差し替える
-  // (時間では消えず、プレイヤーが移動するまで表示され続ける)
+  // ヒント: 対象マスだけ別色(ピンク)で強めに明滅させる。
+  // 時間では消えず、プレイヤーが移動する(setReachable/clearRings)まで続く。
   showHint(target) {
-    this.clearHint();
-    const entry = this.rings.find((r) => r.id === target);
-    if (entry) entry.mesh.visible = false; // 黄リングを一旦隠す
-    this._hintHidden = entry || null;
-    const marker = makeHintRing();
-    const parent =
-      target === 'goal' ? this.goalMesh : this.tileMeshes[target].group;
-    parent.add(marker);
-    this.hintMarker = marker;
+    this.hintId = target;
   }
 
   clearHint() {
-    if (this.hintMarker) {
-      this.hintMarker.parent && this.hintMarker.parent.remove(this.hintMarker);
-      this.hintMarker = null;
-    }
-    if (this._hintHidden) {
-      this._hintHidden.mesh.visible = true; // 黄リングを戻す
-      this._hintHidden = null;
-    }
+    this.hintId = null;
   }
 
   setNumbersVisible(v) {
@@ -931,16 +930,19 @@ export class GameScene {
       }
     }
 
-    // 点滅リング
-    const pulse = 0.55 + 0.45 * Math.sin(this.time * 5);
-    for (const r of this.rings) {
-      r.mesh.material.opacity = 0.35 + 0.55 * pulse;
-      r.mesh.scale.setScalar(1 + 0.08 * pulse);
-    }
-    if (this.hintMarker) {
-      const o = 0.55 + 0.45 * Math.sin(this.time * 8);
-      for (const m of this.hintMarker.children) m.material.opacity = o;
-      this.hintMarker.scale.setScalar(1 + 0.06 * pulse);
+    // 到達マスはモデル全体を明滅（発光）させる。ヒント対象はピンクで強めに。
+    const pulse = 0.5 + 0.5 * Math.sin(this.time * 5);
+    const hintPulse = 0.5 + 0.5 * Math.sin(this.time * 8);
+    for (const r of this.reach) {
+      const isHint = this.hintId != null && r.id === this.hintId;
+      const col = isHint ? 0xff2f8e : r.id === 'goal' ? 0xffb524 : 0xfff04a;
+      const inten = isHint
+        ? 0.45 + 0.85 * hintPulse
+        : 0.18 + 0.6 * pulse;
+      for (const mm of r.mats) {
+        mm.m.emissive.setHex(col);
+        mm.m.emissiveIntensity = inten;
+      }
     }
 
     // ゴールのピンクウサギの待機モーション
