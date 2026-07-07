@@ -635,8 +635,11 @@ export class Game {
     const fromStance = this.stance;
     const fromIdx = this.curIdx; // 立っていたマス(空きマスなら -1)
     const onSpring = fromIdx >= 0 && this.level.tiles[fromIdx].spring;
-    // 着地の解決。undo用に、この手で消えるマスと直前スタンスを記録
-    const landInfo = id === 'goal' ? null : landStance(this.level, this.alive, id);
+    // 着地の解決(トロッコは乗った進行方向へ走る)。undo用に消えるマスと直前スタンスを記録
+    const landInfo =
+      id === 'goal'
+        ? null
+        : landStance(this.level, this.alive, fromStance.x, fromStance.y, id);
     this.history.push({
       stance: fromStance,
       curIdx: fromIdx,

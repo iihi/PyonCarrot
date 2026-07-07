@@ -227,14 +227,9 @@ export function makeTile(tile) {
   carrots.position.set(FWD_AXIS.x * 0.1, carrotLift, FWD_AXIS.z * 0.1);
 
   // トロッコマス: 作業用の木箱トロッコ(真ん中が開いた箱型+金属フチ+スポーク車輪)
-  // 向きは引き手(ハンドル)と足元の矢印で示す。ニンジンは箱の中に積む。
+  // 進む向きは「乗ったときの進行方向」なので、向きを示す矢印等は付けない。ニンジンは箱の中に積む。
   if (tile.cart) {
     const railGroup = new THREE.Group();
-
-    // 進行方向の足元の矢印(控えめ)
-    const arrow = mesh(new THREE.ConeGeometry(0.1, 0.2, 4), mat(0xffd402), 0, 0.21, 0.56);
-    arrow.rotation.x = Math.PI / 2;
-    railGroup.add(arrow);
 
     const cart = new THREE.Group();
     // 畑(茶)にも草(緑)にも埋もれない青系メタル
@@ -272,12 +267,6 @@ export function makeTile(tile) {
       }
     }
 
-    // 引き手(前方=進行方向へ斜め下に突き出す木の棒)
-    const handle = mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.34, 6), wood, 0, floorY + 0.02, L / 2 + 0.13);
-    handle.rotation.x = Math.PI / 2.4;
-    cart.add(handle);
-    cart.add(mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.09, 6), woodDark, 0, floorY + 0.11, L / 2 + 0.26));
-
     // スポーク車輪×4(グレー・ハブ+スポーク)
     const wheels = [];
     const wheelMat = mat(0x717681, { roughness: 0.4, metalness: 0.4 });
@@ -308,7 +297,7 @@ export function makeTile(tile) {
     carrots.position.set(0, floorY + 0.04, 0);
     cart.add(carrots);
 
-    railGroup.rotation.y = Math.atan2(tile.rail[0], tile.rail[1]);
+    // 向きは乗車時に決まる(rideCartで回す)。初期は中立。
     g.add(railGroup);
     g.userData.cart = cart;
     g.userData.railGroup = railGroup;

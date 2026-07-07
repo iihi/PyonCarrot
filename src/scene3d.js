@@ -663,6 +663,10 @@ export class GameScene {
       const p1 = this.worldPos(stop.x, stop.y, this._standY(stop.x, stop.y));
       const dist = Math.abs(stop.x - c.x) + Math.abs(stop.y - c.y);
       this.killTweens('rabbit');
+      // 荷車を進行方向へ向ける(乗った向きで走る)
+      if (rg && dist > 0) {
+        rg.rotation.y = Math.atan2(stop.x - c.x, stop.y - c.y);
+      }
       if (dist > 0) this.rabbit.rotation.y = Math.atan2(p1.x - p0.x, p1.z - p0.z);
       const dur = 0.16 + dist * 0.12;
       this.tween(dur, 0, (t) => t, (t) => {
@@ -740,6 +744,7 @@ export class GameScene {
       this.killTweens(`cart${idx}`);
       rg.position.set(0, 0, 0);
       rg.scale.setScalar(1);
+      rg.rotation.y = 0;
       rg.visible = true;
     }
     if (tm.alive && tm.group.visible) return;

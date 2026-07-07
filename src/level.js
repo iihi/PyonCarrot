@@ -182,18 +182,20 @@ function tileAt(level, mask, x, y) {
 }
 
 // ---------- 着地の解決(トロッコ) ----------
-// targetIdx に着地したときのスタンスを返す。
+// fromX,fromY からジャンプして targetIdx に着地したときのスタンスを返す。
 // 通常マス: そのマスの上に立つ(power=マスのパワー)。
-// トロッコ: レール方向へ、同じ高さの空きマスを進み、段差/マス/端の手前で止まる(大破)。
+// トロッコ: 「乗ったときの進行方向」へ、同じ高さの空きマスを進み、段差/マス/端の手前で止まる(大破)。
 //   降りた空きマスに立ち、次のジャンプ力 = トロッコの数字(value)。
 // 返り値: { stance, eaten } eaten=消費するマスindex(トロッコ自身のみ)。
-function landStanceM(level, mask, targetIdx) {
+function landStanceM(level, mask, fromX, fromY, targetIdx) {
   const t = level.tiles[targetIdx];
   const h0 = level.heights[t.x][t.y];
   if (!t.cart) {
     return { stance: stanceFromTile(level, targetIdx), eaten: [targetIdx] };
   }
-  const [rx, ry] = t.rail;
+  // 進行方向 = 乗り込んだジャンプの向き
+  const rx = Math.sign(t.x - fromX);
+  const ry = Math.sign(t.y - fromY);
   const ahead = mask & ~(1 << targetIdx);
   let x = t.x;
   let y = t.y;
@@ -214,10 +216,10 @@ function landStanceM(level, mask, targetIdx) {
 }
 
 // 配列版(ゲーム本体用): alive から mask を作って解決
-export function landStance(level, alive, targetIdx) {
+export function landStance(level, alive, fromX, fromY, targetIdx) {
   let mask = 0;
   for (let i = 0; i < level.tiles.length; i++) if (alive[i]) mask |= 1 << i;
-  return landStanceM(level, mask, targetIdx);
+  return landStanceM(level, mask, fromX, fromY, targetIdx);
 }
 
 // ---------- 生成 ----------
@@ -404,7 +406,7 @@ export function computeMinMoves(level) {
         if (!(st.mask & (1 << i))) continue;
         const t = level.tiles[i];
         if (!canJumpXY(level, s.x, s.y, s.h, s.power, t.x, t.y)) continue;
-        const { stance, eaten } = landStanceM(level, st.mask, i);
+        const { stance, eaten } = landStanceM(level, st.mask, s.x, s.y, i);
         let m2 = st.mask;
         for (const e of eaten) m2 &= ~(1 << e);
         const k = stance.id + '|' + m2;
@@ -459,7 +461,7 @@ export function findSolution(level, alive, stance) {
         if (!(m & (1 << i))) continue;
         const t = level.tiles[i];
         if (!canJumpXY(level, s.x, s.y, s.h, s.power, t.x, t.y)) continue;
-        const { stance: s2, eaten } = landStanceM(level, m, i);
+        const { stance: s2, eaten } = landStanceM(level, m, s.x, s.y, i);
         let nm = m;
         for (const e of eaten) nm &= ~(1 << e);
         const rest = dfs(s2, nm);
