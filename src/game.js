@@ -264,6 +264,11 @@ export class Game {
     };
 
     window.addEventListener('keydown', (e) => this._key(e));
+
+    // チュートリアル吹き出しは画面のどこかをタップしても消える(うさぎを動かさなくてOK)
+    window.addEventListener('pointerdown', () => {
+      if (this._tutShown) this._hideTutorial(true);
+    });
   }
 
   _key(e) {
@@ -528,7 +533,7 @@ export class Game {
         flag: '_tut_cart',
         pick: (t) => !!t.cart,
         prefer: () => 0,
-        html: '🛒 <b>トロッコ</b>のマス！<br />乗るとレールの先の<br />マスまで<b>運ばれる</b>よ',
+        html: '🛒 <b>トロッコ</b>のマス！乗ると<b>進んだ方向</b>へ<br />走って、かべ(段差や畑)の手前で止まるよ。<br />止まった所から<b>数字ぶん</b>ジャンプ！',
       },
     ];
 
