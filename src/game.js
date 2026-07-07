@@ -600,6 +600,8 @@ export class Game {
   _updateReachable() {
     this.reachable = reachableFrom(this.level, this.alive, this.stance);
     this.scene.setReachable(this.reachable);
+    // 空きマス(トロッコ降車後)ではウサギの上に次のジャンプ力を表示
+    this.scene.setRabbitNumber(this.curIdx === -1 ? this.stance.power : null);
 
     if (this.reachable.length === 0) {
       // 詰み

@@ -306,26 +306,39 @@ function tryGenerate(rand, n, seed, stage, heights) {
       const cy = o.ny;
       const hc = heights[cx][cy];
       const hasTile = (x, y) => tiles.some((t) => t.x === x && t.y === y);
-      // レール方向へ同高さの空きマスを進み、端/段差で停止(=停止セルS)。
-      // 途中に既存マスがあると実行時(そのマスは食べられて消える)とズレるのでトロッコ化しない。
+      // レール方向へ同高さの空きマスを1〜3マス進み、端/段差の壁で停止(=停止セルS)。
+      // ・必ず1マス以上動く(動けない場所には作らない)
+      // ・3マス以内に壁(端/段差)があるときだけ作る(遠くの端まで走って画面外に出るのを防ぐ)
+      // ・途中に既存マス/予約セルがあると実行時とズレるので作らない
       // コリドーは予約して常に空に保ち、停止位置を状況に依らず固定する。
+      const CART_MAX = 3;
       const corridor = [];
       let sxp = cx;
       let syp = cy;
-      let corridorOk = true;
-      while (true) {
+      let stoppedAtWall = false;
+      while (corridor.length < CART_MAX) {
         const nx2 = sxp + o.dx;
         const ny2 = syp + o.dy;
-        if (!inGrid(nx2, ny2)) break; // 端で停止
-        if (heights[nx2][ny2] !== hc) break; // 段差で停止
-        if (hasTile(nx2, ny2) || occ.has(key(nx2, ny2))) {
-          corridorOk = false; // 途中にマス/予約セル → トロッコ化中止
+        if (!inGrid(nx2, ny2)) {
+          stoppedAtWall = true;
           break;
         }
+        if (heights[nx2][ny2] !== hc) {
+          stoppedAtWall = true;
+          break;
+        }
+        if (hasTile(nx2, ny2) || occ.has(key(nx2, ny2))) break;
         corridor.push(key(nx2, ny2));
         sxp = nx2;
         syp = ny2;
       }
+      // 3マス進んでも壁が無い(=まだ空きが続く)場合、次のセルが壁か確認
+      if (!stoppedAtWall && corridor.length === CART_MAX) {
+        const nx2 = sxp + o.dx;
+        const ny2 = syp + o.dy;
+        if (!inGrid(nx2, ny2) || heights[nx2][ny2] !== hc) stoppedAtWall = true;
+      }
+      const corridorOk = stoppedAtWall && corridor.length >= 1;
       const corridorSet = new Set(corridor);
       // 停止セルSから、数字p(1〜3)で行ける次マスTの候補を集める(線路上は除外)
       const landOpts = [];

@@ -152,16 +152,16 @@ const CARROT_LAYOUT = {
   ],
 };
 
-// 赤いコイルバネ(ジャンプ台)。土台の上に立つ螺旋+金属天板。
+// コイルバネ(ジャンプ台)。土台いっぱいの大きな螺旋+天板。紫で目立たせる。
 function makeSpring() {
   const g = new THREE.Group();
-  const coilMat = mat(0xe23c3c, { roughness: 0.35, metalness: 0.5 });
-  const plateMat = mat(0xc6ccd4, { roughness: 0.3, metalness: 0.6 });
+  const coilMat = mat(0x9b5cff, { roughness: 0.3, metalness: 0.55 });
+  const plateMat = mat(0xffd24a, { roughness: 0.35, metalness: 0.5 });
   const baseY = 0.2;
-  const h = 0.32;
-  const r = 0.23;
+  const h = 0.4;
+  const r = 0.32; // 台座(半径0.4)いっぱい
   const coils = 4;
-  const seg = 60;
+  const seg = 64;
   const pts = [];
   for (let i = 0; i <= seg; i++) {
     const t = i / seg;
@@ -169,15 +169,15 @@ function makeSpring() {
     pts.push(new THREE.Vector3(Math.cos(a) * r, baseY + t * h, Math.sin(a) * r));
   }
   const tube = new THREE.Mesh(
-    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), seg, 0.05, 6, false),
+    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), seg, 0.065, 6, false),
     coilMat
   );
   tube.castShadow = true;
   g.add(tube);
-  // 下皿・上の天板
-  g.add(mesh(new THREE.CylinderGeometry(r + 0.05, r + 0.07, 0.04, 12), plateMat, 0, baseY, 0));
-  g.add(mesh(new THREE.CylinderGeometry(r + 0.07, r + 0.03, 0.05, 12), plateMat, 0, baseY + h, 0));
-  return { group: g, topY: baseY + h + 0.03 };
+  // 下皿・上の天板(黄色で台っぽく)
+  g.add(mesh(new THREE.CylinderGeometry(r + 0.06, r + 0.08, 0.05, 12), plateMat, 0, baseY, 0));
+  g.add(mesh(new THREE.CylinderGeometry(r + 0.05, r + 0.02, 0.06, 12), plateMat, 0, baseY + h, 0));
+  return { group: g, topY: baseY + h + 0.04 };
 }
 
 export function makeTile(tile) {

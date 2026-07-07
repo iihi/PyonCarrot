@@ -130,6 +130,7 @@ export class GameScene {
     this.level = level;
     this.goalCollected = false;
     this.eatStart = -1;
+    this.setRabbitNumber(null);
     for (const t of this.tileMeshes) this.world.remove(t.group);
     if (this.goalMesh) this.world.remove(this.goalMesh);
     this.clearRings();
@@ -739,6 +740,7 @@ export class GameScene {
       this.killTweens(`cart${idx}`);
       rg.position.set(0, 0, 0);
       rg.scale.setScalar(1);
+      rg.visible = true;
     }
     if (tm.alive && tm.group.visible) return;
     tm.alive = true;
@@ -750,21 +752,73 @@ export class GameScene {
     }, null, `tile${idx}`);
   }
 
-  // 荷車が壊れる演出 → マスを沈める
+  // 荷車が大破する演出 → 破片が飛び散ってマスが沈む
   _breakCart(idx) {
     const tm = this.tileMeshes[idx];
     const rg = tm.group.userData.railGroup;
-    if (rg) {
-      this.tween(0.28, 0, easeOut, (k) => {
-        rg.scale.setScalar(Math.max(0.01, 1 - k));
-        rg.position.y = k * -0.3;
-      }, null, `cart${idx}`);
+    const wp = new THREE.Vector3();
+    (rg || tm.group).getWorldPosition(wp);
+    if (rg) rg.visible = false; // 荷車は一瞬で砕けて消える
+
+    // 破片(木＝茶, 金属＝青灰, 車輪＝黒)を弾き飛ばす
+    const colors = [0x3f8fd0, 0x2f6ea8, 0xcfe4f2, 0x2b2b30, 0xffd24a];
+    for (let i = 0; i < 12; i++) {
+      const sz = 0.07 + Math.random() * 0.08;
+      const m = new THREE.Mesh(
+        new THREE.BoxGeometry(sz, sz, sz),
+        new THREE.MeshStandardMaterial({
+          color: colors[i % colors.length],
+          flatShading: true,
+        })
+      );
+      m.position.set(wp.x, wp.y + 0.35, wp.z);
+      this.scene.add(m);
+      this._fx.add(m);
+      const ang = Math.random() * Math.PI * 2;
+      const sp = 1.2 + Math.random() * 1.8;
+      const vx = Math.cos(ang) * sp;
+      const vz = Math.sin(ang) * sp;
+      const vy = 2.2 + Math.random() * 2.2;
+      const rx = (Math.random() - 0.5) * 0.8;
+      const ry = (Math.random() - 0.5) * 0.8;
+      this.tween(0.55 + Math.random() * 0.3, 0, (t) => t, (k) => {
+        m.position.set(wp.x + vx * k, wp.y + 0.35 + vy * k - 4.5 * k * k, wp.z + vz * k);
+        m.rotation.x += rx;
+        m.rotation.y += ry;
+        m.scale.setScalar(Math.max(0.01, 1 - k * 0.7));
+      }, () => this._removeFx(m));
     }
+    // 砂ぼこりのリング
+    const ring = makeRing(0xe8dcc0);
+    ring.position.set(wp.x, 0.03, wp.z);
+    ring.rotation.x = -Math.PI / 2;
+    this.scene.add(ring);
+    this._fx.add(ring);
+    this.tween(0.4, 0, easeOut, (k) => {
+      ring.scale.setScalar(0.5 + k * 2.2);
+      ring.material.opacity = 0.7 * (1 - k);
+    }, () => this._removeFx(ring));
+
     this._sinkTile(idx);
   }
 
   setOnSpring(v) {
     this.onSpring = v;
+  }
+
+  // 空きマス(トロッコ降車後)に立っているときは、次のジャンプ力をウサギの上に表示する
+  setRabbitNumber(n) {
+    if (this.rabbitNum) {
+      this.rabbit.remove(this.rabbitNum);
+      if (this.rabbitNum.material.map) this.rabbitNum.material.map.dispose();
+      this.rabbitNum.material.dispose();
+      this.rabbitNum = null;
+    }
+    if (n == null) return;
+    const spr = makeNumberSprite(n);
+    spr.position.set(0, 1.5, 0); // 頭の上
+    this.rabbit.add(spr);
+    this.rabbitNum = spr;
   }
 
   celebrate() {
