@@ -152,29 +152,46 @@ const CARROT_LAYOUT = {
   ],
 };
 
+// 赤いコイルバネ(ジャンプ台)。土台の上に立つ螺旋+金属天板。
+function makeSpring() {
+  const g = new THREE.Group();
+  const coilMat = mat(0xe23c3c, { roughness: 0.35, metalness: 0.5 });
+  const plateMat = mat(0xc6ccd4, { roughness: 0.3, metalness: 0.6 });
+  const baseY = 0.2;
+  const h = 0.32;
+  const r = 0.23;
+  const coils = 4;
+  const seg = 60;
+  const pts = [];
+  for (let i = 0; i <= seg; i++) {
+    const t = i / seg;
+    const a = t * coils * Math.PI * 2;
+    pts.push(new THREE.Vector3(Math.cos(a) * r, baseY + t * h, Math.sin(a) * r));
+  }
+  const tube = new THREE.Mesh(
+    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), seg, 0.05, 6, false),
+    coilMat
+  );
+  tube.castShadow = true;
+  g.add(tube);
+  // 下皿・上の天板
+  g.add(mesh(new THREE.CylinderGeometry(r + 0.05, r + 0.07, 0.04, 12), plateMat, 0, baseY, 0));
+  g.add(mesh(new THREE.CylinderGeometry(r + 0.07, r + 0.03, 0.05, 12), plateMat, 0, baseY + h, 0));
+  return { group: g, topY: baseY + h + 0.03 };
+}
+
 export function makeTile(tile) {
   const g = new THREE.Group();
   const value = tile.value;
 
-  // ジャンプ台は土台ごとトランポリン風(赤い側面+白バンド)。上面は土のままでニンジンが刺さる
   const mound = mesh(
     new THREE.CylinderGeometry(0.4, 0.5, 0.18, 7),
-    mat(tile.spring ? 0xe04848 : 0x9c6b45),
+    mat(0x9c6b45),
     0,
     0.09,
     0
   );
   g.add(mound);
-  if (tile.spring) {
-    const band = mesh(
-      new THREE.CylinderGeometry(0.46, 0.47, 0.055, 7),
-      mat(0xffffff, { roughness: 0.6 }),
-      0,
-      0.07,
-      0
-    );
-    g.add(band);
-  }
   const top = mesh(
     new THREE.CylinderGeometry(0.38, 0.41, 0.05, 7),
     mat(0xb98a5e),
@@ -183,6 +200,14 @@ export function makeTile(tile) {
     0
   );
   g.add(top);
+
+  // ジャンプ台: 土台の上に赤いコイルバネ+天板。ニンジンは天板の上に乗る
+  let carrotLift = 0;
+  if (tile.spring) {
+    const spring = makeSpring();
+    g.add(spring.group);
+    carrotLift = spring.topY - 0.18; // ニンジンをバネの上へ持ち上げる
+  }
 
   const carrots = new THREE.Group();
   for (const o of CARROT_LAYOUT[value] || CARROT_LAYOUT[1]) {
@@ -199,7 +224,7 @@ export function makeTile(tile) {
     carrots.scale.setScalar(value === 1 ? 1.4 : value === 2 ? 1.25 : 1.15);
   }
   // 数字バッジと被らないよう、全体を画面の少し下(手前)へずらす
-  carrots.position.set(FWD_AXIS.x * 0.1, 0, FWD_AXIS.z * 0.1);
+  carrots.position.set(FWD_AXIS.x * 0.1, carrotLift, FWD_AXIS.z * 0.1);
 
   // トロッコマス: 作業用の木箱トロッコ(真ん中が開いた箱型+金属フチ+スポーク車輪)
   // 向きは引き手(ハンドル)と足元の矢印で示す。ニンジンは箱の中に積む。

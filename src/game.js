@@ -3,7 +3,8 @@ import {
   generate,
   reachableFrom,
   findSolution,
-  resolveMove,
+  landStance,
+  stanceFromTile,
   makeCode,
   parseCode,
   GOLD_MULT,
@@ -122,7 +123,7 @@ export class Game {
     if (!this._debug || this.state !== 'playing') return;
     let guard = 0;
     while (this.state === 'playing' && guard++ < 60) {
-      const path = findSolution(this.level, this.alive, this.cur);
+      const path = findSolution(this.level, this.alive, this.stance);
       if (!path || !path.length) break;
       const step = path[0];
       if (!this.reachable.includes(step)) break;
@@ -440,7 +441,8 @@ export class Game {
   startStage() {
     this.level = generate(this.seed, this.stage);
     this.alive = this.level.tiles.map((_, i) => i !== 0);
-    this.cur = 0;
+    this.curIdx = 0; // 立っているマス(空きマスなら -1)
+    this.stance = stanceFromTile(this.level, 0);
     this.carrots = 0; // ニンジンは持ち越さない
     this.hintsUsed = 0;
     this.history = [];
@@ -463,6 +465,8 @@ export class Game {
     this.scene.playEntrance().then(() => {
       // 登場したらスタートマスのニンジンをまず1口
       this._eatTile(0);
+      this.curIdx = 0;
+      this.stance = stanceFromTile(this.level, 0);
       this.scene.setOnSpring(!!this.level.tiles[0].spring);
       this.state = 'playing';
       this._updateHUD();
@@ -537,8 +541,7 @@ export class Game {
 
       const cw = this.scene.canvas.clientWidth;
       // 避けたい場所: プレイヤーうさぎ・次に飛べるマス
-      const cur = this.level.tiles[this.cur];
-      const avoid = [this.scene.projectToScreen(cur.x, cur.y, 0.6)];
+      const avoid = [this.scene.projectToScreen(this.stance.x, this.stance.y, 0.6)];
       for (const id of this.reachable || []) {
         const t = id === 'goal' ? this.level.goal : this.level.tiles[id];
         avoid.push(this.scene.projectToScreen(t.x, t.y, 0.4));
@@ -595,7 +598,7 @@ export class Game {
   }
 
   _updateReachable() {
-    this.reachable = reachableFrom(this.level, this.alive, this.cur);
+    this.reachable = reachableFrom(this.level, this.alive, this.stance);
     this.scene.setReachable(this.reachable);
 
     if (this.reachable.length === 0) {
@@ -622,17 +625,21 @@ export class Game {
     this.scene.clearRings();
     this.scene.clearHint();
 
-    const fromIdx = this.cur;
-    const fromTile = this.level.tiles[fromIdx];
-    // 着地の解決(氷なら滑る)。undo用に食べたマス一覧を記録
-    const resolved =
-      id === 'goal' ? null : resolveMove(this.level, this.alive, fromIdx, id);
-    this.history.push({ cur: fromIdx, eaten: resolved ? resolved.eaten : [] });
+    const fromStance = this.stance;
+    const fromIdx = this.curIdx; // 立っていたマス(空きマスなら -1)
+    const onSpring = fromIdx >= 0 && this.level.tiles[fromIdx].spring;
+    // 着地の解決。undo用に、この手で消えるマスと直前スタンスを記録
+    const landInfo = id === 'goal' ? null : landStance(this.level, this.alive, id);
+    this.history.push({
+      stance: fromStance,
+      curIdx: fromIdx,
+      eaten: landInfo ? landInfo.eaten.slice() : [],
+    });
 
-    this.sfx[fromTile.spring ? 'boing' : 'hop']();
-    this.alive[fromIdx] = false; // 元いたマスは消える(スタート地点はalive[0]=false済)
+    this.sfx[onSpring ? 'boing' : 'hop']();
 
-    await this.scene.jumpTo(fromIdx, id);
+    // 元いたマスを沈める(空きマスからのジャンプなら沈めるマスなし)
+    await this.scene.jumpTo(fromStance, id, fromIdx);
     this.sfx.land();
 
     if (id === 'goal') {
@@ -640,20 +647,19 @@ export class Game {
       return;
     }
 
-    for (const idx of resolved.eaten) this.alive[idx] = false;
-    this._eatTile(id); // 着地マスをパクッ
+    const tile = this.level.tiles[id];
+    for (const idx of landInfo.eaten) this.alive[idx] = false;
+    this._eatTile(id); // 着地マス(トロッコ本体)のニンジンをパクッ
 
-    // 氷スライド
-    if (resolved.eaten.length > 1) {
+    // トロッコ: レール方向へ運ばれ、段差/端の手前で大破 → 空きマスに降りる
+    if (tile.cart) {
       this.sfx.slide();
-      await this.scene.slideAlong(resolved.eaten);
-      for (let k = 1; k < resolved.eaten.length; k++) {
-        this._eatTile(resolved.eaten[k]);
-      }
+      await this.scene.rideCart(id, landInfo.stance);
     }
 
-    this.cur = resolved.finalIdx;
-    this.scene.setOnSpring(!!this.level.tiles[this.cur].spring);
+    this.stance = landInfo.stance;
+    this.curIdx = tile.cart ? -1 : id;
+    this.scene.setOnSpring(this.curIdx >= 0 && this.level.tiles[this.curIdx].spring);
 
     this.state = 'playing';
     this._updateHUD();
@@ -890,19 +896,20 @@ export class Game {
     this.scene.clearHint();
 
     const prev = this.history.pop();
-    const fromId = this.cur;
-    // この移動で消えたマスを全てフィールドに戻す（氷スライドぶん含む。
-    // ニンジンは食べたあとなので戻らない）
+    // この手で消えたマスをフィールドに戻す(ニンジンは食べたあとなので戻らない)
     for (const idx of prev.eaten) {
       this.alive[idx] = true;
-      if (idx !== fromId) this.scene.restoreTile(idx);
+      this.scene.restoreTile(idx);
     }
-    this.alive[fromId] = true;
-    // 戻り先のマスはウサギが乗るので alive は false のまま
-    await this.scene.rewindTo(prev.cur, fromId);
+    // 戻り先がマスならその沈んだメッシュも戻す(空きマスなら不要)
+    if (prev.curIdx >= 0) this.scene.restoreTile(prev.curIdx);
+    await this.scene.rewindHop(prev.stance);
 
-    this.cur = prev.cur;
-    this.scene.setOnSpring(!!this.level.tiles[this.cur].spring);
+    this.stance = prev.stance;
+    this.curIdx = prev.curIdx;
+    this.scene.setOnSpring(
+      this.curIdx >= 0 && this.level.tiles[this.curIdx].spring
+    );
     this.state = 'playing';
     this._updateHUD();
     this._updateReachable();
@@ -914,7 +921,7 @@ export class Game {
       this._toast(`ニンジンが足りません（ヒントは${COST_HINT}本）`);
       return;
     }
-    const path = findSolution(this.level, this.alive, this.cur);
+    const path = findSolution(this.level, this.alive, this.stance);
     if (!path) {
       this._toast('この状態ではクリアできません。まきもどしを使おう！');
       return;

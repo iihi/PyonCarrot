@@ -573,11 +573,12 @@ export class GameScene {
     }
   }
 
-  // ウサギがジャンプ。fromIdx のマスは沈む。Promise を返す。
+  // ウサギがジャンプ。sinkIdx>=0 ならそのマスを沈める。Promise を返す。
   // タメ(しゃがみ) → ぴょーん(高い弧・伸び・前傾・手足を伸ばす) → 着地バウンド の3段モーション
-  jumpTo(fromIdx, target) {
+  // from は stance {x,y}(空きマスにも立てる)。
+  jumpTo(fromStance, target, sinkIdx = -1) {
     return new Promise((resolve) => {
-      const from = this.level.tiles[fromIdx];
+      const from = fromStance;
       const to = target === 'goal' ? this.level.goal : this.level.tiles[target];
       const p0 = this.worldPos(from.x, from.y, this._standY(from.x, from.y));
       const p1 = this.worldPos(to.x, to.y, this._standY(to.x, to.y));
@@ -646,7 +647,35 @@ export class GameScene {
         this.rabbit.scale.setScalar(1);
       }, 'rabbit');
 
-      this._sinkTile(fromIdx);
+      if (sinkIdx >= 0) this._sinkTile(sinkIdx);
+    });
+  }
+
+  // トロッコで運ばれる: 荷車がウサギを乗せてレール方向の停止セルまで走り、大破して沈む。
+  rideCart(cartIdx, stop) {
+    return new Promise((resolve) => {
+      const c = this.level.tiles[cartIdx];
+      const cartTm = this.tileMeshes[cartIdx];
+      const rg = cartTm.group.userData.railGroup;
+      const cart = cartTm.group.userData.cart;
+      const p0 = this.worldPos(c.x, c.y, this._standY(c.x, c.y));
+      const p1 = this.worldPos(stop.x, stop.y, this._standY(stop.x, stop.y));
+      const dist = Math.abs(stop.x - c.x) + Math.abs(stop.y - c.y);
+      this.killTweens('rabbit');
+      if (dist > 0) this.rabbit.rotation.y = Math.atan2(p1.x - p0.x, p1.z - p0.z);
+      const dur = 0.16 + dist * 0.12;
+      this.tween(dur, 0, (t) => t, (t) => {
+        const e = t * t * (3 - 2 * t); // なめらか加減速
+        this.rabbit.position.lerpVectors(p0, p1, e);
+        this.rabbit.position.y = p0.y + 0.05 * Math.sin(e * Math.PI);
+        this.rabbit.scale.set(1, 1, 1);
+        if (rg) rg.position.set((stop.x - c.x) * e, 0, (stop.y - c.y) * e);
+        if (cart) for (const w of cart.userData.wheels || []) w.rotation.x -= 0.7;
+      }, () => {
+        this.rabbit.position.copy(p1);
+        this._breakCart(cartIdx); // 大破してマスが沈む
+        resolve();
+      }, 'rabbit');
     });
   }
 
@@ -663,26 +692,15 @@ export class GameScene {
     }, `tile${idx}`);
   }
 
-  // まきもどし：ウサギが戻り、マスが復活する
-  rewindTo(restoreIdx, fromTarget) {
+  // まきもどし：ウサギが今の位置から toStance の位置へ戻る(ふわっとホップ)
+  rewindHop(toStance) {
     return new Promise((resolve) => {
-      const tm = this.tileMeshes[restoreIdx];
-      const g = tm.group;
-      tm.alive = true;
-      g.visible = true;
-      this.killTweens(`tile${restoreIdx}`);
-      this.tween(0.35, 0, easeOut, (k) => {
-        g.position.y = tm.baseY - 1.3 * (1 - k);
-        g.scale.setScalar(Math.max(0.01, k));
-      }, null, `tile${restoreIdx}`);
-
-      const from =
-        fromTarget === 'goal'
-          ? this.level.goal
-          : this.level.tiles[fromTarget];
-      const to = this.level.tiles[restoreIdx];
-      const p0 = this.worldPos(from.x, from.y, this._standY(from.x, from.y));
-      const p1 = this.worldPos(to.x, to.y, this._standY(to.x, to.y));
+      const p0 = this.rabbit.position.clone();
+      const p1 = this.worldPos(
+        toStance.x,
+        toStance.y,
+        this._standY(toStance.x, toStance.y)
+      );
       this.rabbit.rotation.y = Math.atan2(p1.x - p0.x, p1.z - p0.z);
       this.killTweens('rabbit');
       this.tween(0.35, 0.05, (t) => t, (k) => {
@@ -712,9 +730,16 @@ export class GameScene {
 
   // ※まきもどしで復元されたマスは「食べたあと」なのでニンジンは戻さない
 
-  // まきもどしで沈んだマスを盤面に戻す(氷スライドで消えたぶんなど)
+  // まきもどしで沈んだマスを盤面に戻す
   restoreTile(idx) {
     const tm = this.tileMeshes[idx];
+    // トロッコは大破・移動しているので位置とスケールを元に戻す
+    const rg = tm.group.userData.railGroup;
+    if (rg) {
+      this.killTweens(`cart${idx}`);
+      rg.position.set(0, 0, 0);
+      rg.scale.setScalar(1);
+    }
     if (tm.alive && tm.group.visible) return;
     tm.alive = true;
     tm.group.visible = true;
@@ -723,51 +748,6 @@ export class GameScene {
       tm.group.position.y = tm.baseY - 1.3 * (1 - k);
       tm.group.scale.setScalar(Math.max(0.01, k));
     }, null, `tile${idx}`);
-  }
-
-  // トロッコ移動: 食べたマス列に沿って荷車で運ばれる。
-  // 乗ったトロッコマスの荷車がウサギを乗せて次のマスへ走り、着いたら荷車が壊れてマスが沈む。
-  slideAlong(eaten) {
-    return new Promise((resolve) => {
-      this.killTweens('rabbit'); // 着地バウンドを打ち切ってトロッコへ
-      let delay = 0;
-      for (let k = 1; k < eaten.length; k++) {
-        const a = this.level.tiles[eaten[k - 1]];
-        const b = this.level.tiles[eaten[k]];
-        const p0 = this.worldPos(a.x, a.y, this._standY(a.x, a.y));
-        const p1 = this.worldPos(b.x, b.y, this._standY(b.x, b.y));
-        const dist = Math.abs(b.x - a.x) + Math.abs(b.y - a.y);
-        const dur = 0.18 + dist * 0.11;
-        const prevIdx = eaten[k - 1];
-        const cartTm = this.tileMeshes[prevIdx];
-        const rg = cartTm.group.userData.railGroup;
-        const cart = cartTm.group.userData.cart;
-        const isLast = k === eaten.length - 1;
-        // レール+荷車の移動量(タイルグループのローカル空間 = ワールドと同スケール・無回転)
-        const cartDX = b.x - a.x;
-        const cartDZ = b.y - a.y;
-        this.rabbit.rotation.y = Math.atan2(p1.x - p0.x, p1.z - p0.z);
-        this.tween(dur, delay, (t) => t, (t) => {
-          // ゆるやかに加減速(トロッコが走る感じ)
-          const e = t * t * (3 - 2 * t);
-          this.rabbit.position.lerpVectors(p0, p1, e);
-          this.rabbit.position.y = p0.y + (p1.y - p0.y) * e + 0.06;
-          this.rabbit.scale.set(1, 1, 1);
-          // 荷車も一緒に走る(見た目で連れて行かれてる感)
-          if (rg) rg.position.set(cartDX * e, 0, cartDZ * e);
-          if (cart) for (const w of cart.userData.wheels || []) w.rotation.x -= 0.6;
-        }, () => {
-          this._breakCart(prevIdx); // 荷車が壊れてマスが沈む
-          if (isLast) {
-            this.rabbit.scale.setScalar(1);
-            this.rabbit.position.copy(p1);
-            resolve();
-          }
-        }, 'rabbit');
-        delay += dur;
-      }
-      if (eaten.length <= 1) resolve();
-    });
   }
 
   // 荷車が壊れる演出 → マスを沈める
