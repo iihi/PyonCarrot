@@ -248,7 +248,7 @@ export class Game {
       this.retryStage();
     };
     $('btn-sound').onclick = () => {
-      this.sfx.enabled = !this.sfx.enabled;
+      this.sfx.setEnabled(!this.sfx.enabled);
       $('btn-sound').classList.toggle('on', this.sfx.enabled);
       $('btn-sound').textContent = this.sfx.enabled ? '♪' : '×';
       this.sfx.click();
@@ -347,6 +347,7 @@ export class Game {
 
   _showTitle() {
     this.state = 'title';
+    this.sfx.stopBgm(); // タイトルに戻ったらBGMは止める
     this._hideTutorial(false);
     this._cancelClearSeq();
     for (const id of ['modal-help', 'modal-continue', 'modal-clear', 'modal-over', 'modal-share']) {
@@ -444,6 +445,7 @@ export class Game {
   }
 
   startStage() {
+    this.sfx.startBgm(); // ゲーム中はBGMをループ再生(ボタン操作直後なので自動再生OK)
     this.level = generate(this.seed, this.stage);
     this.alive = this.level.tiles.map((_, i) => i !== 0);
     this.curIdx = 0; // 立っているマス(空きマスなら -1)

@@ -4,6 +4,8 @@ export class Sfx {
   constructor() {
     this.ctx = null;
     this.enabled = true;
+    this.bgm = null; // ループ再生するBGM(HTMLAudio)
+    this._wantBgm = false; // 本来BGMを鳴らしたい状態か(消音中でも保持)
 
     // iOS 16.4+: サイレントスイッチONでもWeb Audioが消音されないようにする
     // (新しいiOSではWeb Audioが環境音扱いになり、マナーモードで無音になるため)
@@ -13,10 +15,46 @@ export class Sfx {
 
     // バックグラウンドから戻ったときにオーディオを再開(iOS Safariの中断対策)
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden && this.ctx && this.ctx.state !== 'running') {
-        this.ctx.resume();
+      if (document.hidden) return;
+      if (this.ctx && this.ctx.state !== 'running') this.ctx.resume();
+      if (this.bgm && this.enabled && this._wantBgm && this.bgm.paused) {
+        this._playBgm();
       }
     });
+  }
+
+  // ---------- BGM(ループ再生) ----------
+  startBgm() {
+    if (!this.bgm) {
+      this.bgm = new Audio(import.meta.env.BASE_URL + 'rabi_bgm.mp3');
+      this.bgm.loop = true;
+      this.bgm.volume = 0.35;
+      this.bgm.preload = 'auto';
+    }
+    this._wantBgm = true;
+    if (this.enabled) this._playBgm();
+  }
+
+  stopBgm() {
+    this._wantBgm = false;
+    if (this.bgm) {
+      this.bgm.pause();
+      this.bgm.currentTime = 0;
+    }
+  }
+
+  _playBgm() {
+    const p = this.bgm.play();
+    // 自動再生ブロック時は握りつぶす(次のユーザー操作/復帰で再開する)
+    if (p && p.catch) p.catch(() => {});
+  }
+
+  // 効果音・BGMのオン/オフをまとめて切り替える
+  setEnabled(v) {
+    this.enabled = v;
+    if (!this.bgm) return;
+    if (v && this._wantBgm) this._playBgm();
+    else this.bgm.pause();
   }
 
   // 初回のユーザー操作で呼び、無音バッファを鳴らしてiOSのオーディオを解錠する

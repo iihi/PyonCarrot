@@ -937,8 +937,8 @@ export class GameScene {
       const isHint = this.hintId != null && r.id === this.hintId;
       const col = isHint ? 0xff2f8e : r.id === 'goal' ? 0xffb524 : 0xfff04a;
       const inten = isHint
-        ? 0.45 + 0.85 * hintPulse
-        : 0.18 + 0.6 * pulse;
+        ? 0.2 + 0.42 * hintPulse
+        : 0.05 + 0.26 * pulse;
       for (const mm of r.mats) {
         mm.m.emissive.setHex(col);
         mm.m.emissiveIntensity = inten;
