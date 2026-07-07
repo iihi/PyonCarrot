@@ -9,7 +9,7 @@ export class Sfx {
     this.bgmSource = null; // 再生中のループソース
     this.bgmGain = null; // 音量/消音用
     this._bgmLoading = null; // fetch+decodeのPromise(多重ロード防止)
-    this.bgmVol = 0.35;
+    this.bgmVol = 0.22;
     this._wantBgm = false; // 本来BGMを鳴らしたい状態か(消音中でも保持)
 
     // iOS 16.4+: サイレントスイッチONでもWeb Audioが消音されないようにする
