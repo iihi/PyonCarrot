@@ -935,9 +935,13 @@ export class GameScene {
     const hintPulse = 0.5 + 0.5 * Math.sin(this.time * 8);
     for (const r of this.reach) {
       const isHint = this.hintId != null && r.id === this.hintId;
-      const col = isHint ? 0xff2f8e : r.id === 'goal' ? 0xffb524 : 0xfff04a;
+      const isGoal = r.id === 'goal';
+      const col = isHint ? 0xff2f8e : isGoal ? 0xffcf22 : 0xfff04a;
+      // ゴールは他のマスより強めに光らせて選択肢だと分かりやすくする
       const inten = isHint
         ? 0.2 + 0.42 * hintPulse
+        : isGoal
+        ? 0.4 + 0.6 * pulse
         : 0.05 + 0.26 * pulse;
       for (const mm of r.mats) {
         mm.m.emissive.setHex(col);

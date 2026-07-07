@@ -20,9 +20,13 @@ export class Sfx {
 
     // バックグラウンドから戻ったときにオーディオを再開(iOS Safariの中断対策)
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) return;
+      if (document.hidden) {
+        // バックグラウンドでは一時停止(AudioContextを止めると再生位置も止まる)
+        if (this.ctx && this.ctx.state === 'running') this.ctx.suspend();
+        return;
+      }
+      // 戻ってきたら再開(サスペンド中は位置が止まっているので繋ぎ目なく続く)
       if (this.ctx && this.ctx.state !== 'running') this.ctx.resume();
-      // ループソースが中断されていたら鳴らし直す
       if (this._wantBgm && !this.bgmSource && this.bgmBuffer) this._startBgmSource();
     });
   }

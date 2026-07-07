@@ -39,14 +39,15 @@ const DIRS = [
 ];
 
 // ---------- 難易度カーブ ----------
+// 畑マスが増えると盤面が広がり画面が縮むので、増え方はゆるやかにする(+1/ステージ)
 export function tileCountForStage(stage) {
-  return Math.min(8 + 2 * (stage - 1), MAX_TILES);
+  return Math.min(7 + (stage - 1), MAX_TILES);
 }
 
 export function heightCapForStage(stage) {
-  if (stage < 3) return 0;
-  if (stage < 7) return 1;
-  if (stage < 12) return 2;
+  if (stage < 4) return 0;
+  if (stage < 9) return 1;
+  if (stage < 15) return 2;
   return MAX_HEIGHT;
 }
 
