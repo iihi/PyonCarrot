@@ -605,8 +605,12 @@ export class Game {
   _updateReachable() {
     this.reachable = reachableFrom(this.level, this.alive, this.stance);
     this.scene.setReachable(this.reachable);
-    // 空きマス(トロッコ降車後)ではウサギの上に次のジャンプ力を表示
-    this.scene.setRabbitNumber(this.curIdx === -1 ? this.stance.power : null);
+    // 空きマス(トロッコ降車後)ではそのマスに次のジャンプ力を表示
+    this.scene.setRabbitNumber(
+      this.curIdx === -1 ? this.stance.power : null,
+      this.stance.x,
+      this.stance.y
+    );
 
     if (this.reachable.length === 0) {
       // 詰み
@@ -631,6 +635,7 @@ export class Game {
     this.state = 'busy';
     this.scene.clearRings();
     this.scene.clearHint();
+    this.scene.setRabbitNumber(null); // 空きマスの数字はその場で消す(追従させない)
 
     const fromStance = this.stance;
     const fromIdx = this.curIdx; // 立っていたマス(空きマスなら -1)

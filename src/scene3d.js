@@ -811,18 +811,20 @@ export class GameScene {
     this.onSpring = v;
   }
 
-  // 空きマス(トロッコ降車後)に立っているときは、次のジャンプ力をウサギの上に表示する
-  setRabbitNumber(n) {
+  // 空きマス(トロッコ降車後)の次のジャンプ力を、そのマスの位置に固定表示する。
+  // ウサギの子ではなくワールドに置くので、ジャンプしても追従せずその場に残る。
+  setRabbitNumber(n, gx, gy) {
     if (this.rabbitNum) {
-      this.rabbit.remove(this.rabbitNum);
+      this.scene.remove(this.rabbitNum);
       if (this.rabbitNum.material.map) this.rabbitNum.material.map.dispose();
       this.rabbitNum.material.dispose();
       this.rabbitNum = null;
     }
     if (n == null) return;
     const spr = makeNumberSprite(n);
-    spr.position.set(0, 1.5, 0); // 頭の上
-    this.rabbit.add(spr);
+    const p = this.worldPos(gx, gy, this._standY(gx, gy) + 1.5); // 頭上あたり
+    spr.position.copy(p);
+    this.scene.add(spr);
     this.rabbitNum = spr;
   }
 
