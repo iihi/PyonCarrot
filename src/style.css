@@ -442,6 +442,41 @@ body {
   opacity: 0.8;
 }
 
+/* 季節の導入説明 */
+.season-box {
+  background: var(--cream);
+  border: 5px solid var(--season-color, #7c5cff);
+  border-radius: 24px;
+  padding: 26px 22px;
+  width: min(100%, 340px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.32);
+}
+.season-emoji {
+  font-size: 60px;
+  line-height: 1;
+  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.18));
+}
+.season-name {
+  color: var(--season-color, #7c5cff);
+  font-size: 30px;
+  margin: -4px 0 2px;
+}
+.season-text {
+  color: var(--brown);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.6;
+}
+.season-box .big-btn.primary {
+  margin-top: 6px;
+  background: var(--season-color, #7c5cff);
+}
+
 .help-list {
   text-align: left;
   color: var(--brown);

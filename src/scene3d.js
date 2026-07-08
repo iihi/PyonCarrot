@@ -9,6 +9,7 @@ import {
   makeNumberSprite,
   makeRing,
   makeTerrain,
+  SEASON_BG,
   HSTEP,
 } from './models.js';
 import { GRID } from './level.js';
@@ -49,7 +50,8 @@ export class GameScene {
 
     this.world = new THREE.Group();
     this.scene.add(this.world);
-    this.island = makeIsland(GRID);
+    this._bgSeason = 'spring';
+    this.island = makeIsland(GRID, 'spring');
     this.scene.add(this.island);
 
     // グリッド線（9x9全面）
@@ -124,9 +126,30 @@ export class GameScene {
     if (this.level) this._fitCamera(true);
   }
 
+  // 季節ごとに背景(島の草・水・空・フォグ)を切り替える。将来PNG背景に差し替え予定。
+  _applyBackground(season) {
+    if (season === this._bgSeason) return;
+    this._bgSeason = season;
+    const bg = SEASON_BG[season] || SEASON_BG.spring;
+    if (this.island) {
+      this.scene.remove(this.island);
+      this.island.traverse((c) => {
+        if (c.geometry) c.geometry.dispose();
+        if (c.material) {
+          (Array.isArray(c.material) ? c.material : [c.material]).forEach((m) => m.dispose());
+        }
+      });
+    }
+    this.island = makeIsland(GRID, season);
+    this.scene.add(this.island);
+    this.scene.background = new THREE.Color(bg.sky);
+    this.scene.fog.color.setHex(bg.fog);
+  }
+
   // ---------- ステージ構築 ----------
   buildStage(level) {
     this.level = level;
+    this._applyBackground(level.background || level.season || 'spring');
     this.goalCollected = false;
     this.eatStart = -1;
     this.setRabbitNumber(null);

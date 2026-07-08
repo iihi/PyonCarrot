@@ -20,16 +20,48 @@ export const MAX_HEIGHT = 3; // 高さレベル0〜3(=段差3段)
 export const SPRING_BONUS = 2; // ジャンプ台で伸びる距離
 export const GOLD_MULT = 5; // 大ニンジンは1本で5本分(獲得 = 本数 × 5)
 
-// ギミックの解禁ステージと出現率・上限
-const GOLD_STAGE = 3;
-const SPRING_STAGE = 4;
-const CART_STAGE = 6;
+// ギミックの出現率・上限
 const P_GOLD = 0.08;
 const P_SPRING = 0.1;
 const P_CART = 0.15;
 const MAX_GOLD = 2;
 const MAX_SPRING = 3;
 const MAX_CARTS = 3;
+
+// ---------- 季節 ----------
+// 1季節=10ステージ: 春(1-10)→夏(11-20)→秋(21-30)→冬(31-40)。41面以降は全部入り。
+// 各季節は単独ギミック(段差と金ニンジンは全季節)。
+export const SEASONS = ['spring', 'summer', 'autumn', 'winter'];
+
+export function seasonForStage(stage) {
+  if (stage <= 40) return SEASONS[Math.floor((stage - 1) / 10)];
+  return 'allin';
+}
+
+// 背景の季節。チュートリアル4季節はその季節、41面以降は10面ごとにseedから擬似ランダム
+// (日時ではなくseed由来なのでコードで再現できる=不正対策)。
+export function backgroundSeasonForStage(seed, stage) {
+  const s = seasonForStage(stage);
+  if (s !== 'allin') return s;
+  const block = Math.floor((stage - 41) / 10);
+  const r = mulberry32(mixSeed(seed, 90210 + block))();
+  return SEASONS[Math.floor(r * SEASONS.length)];
+}
+
+// その季節で許可するギミック。sledは背景が冬のときトロッコの見た目をソリにする。
+export function seasonProfile(seed, stage) {
+  const s = seasonForStage(stage);
+  const bg = backgroundSeasonForStage(seed, stage);
+  return {
+    season: s,
+    background: bg,
+    allowSpring: s === 'summer' || s === 'allin',
+    allowHuman: s === 'autumn' || s === 'allin',
+    allowCart: s === 'winter' || s === 'allin',
+    allowGold: true,
+    sled: bg === 'winter',
+  };
+}
 
 const DIRS = [
   [1, 0],
@@ -39,16 +71,26 @@ const DIRS = [
 ];
 
 // ---------- 難易度カーブ ----------
-// 畑マスが増えると盤面が広がり画面が縮むので、増え方はゆるやかにする(+1/ステージ)
+// 各季節で盤面サイズをリセット(季節頭は小さめ→季節内で増やす)。
+// 新ギミックを小さい盤面で導入できるようにするため。
 export function tileCountForStage(stage) {
-  return Math.min(7 + (stage - 1), MAX_TILES);
+  if (stage <= 40) {
+    const within = ((stage - 1) % 10) + 1; // 1..10
+    return Math.min(8 + 2 * (within - 1), MAX_TILES); // 8 → 26
+  }
+  // 全部入り(41面〜)は大きめを維持しつつ緩やかに最大へ
+  return Math.min(24 + Math.floor((stage - 41) / 3), MAX_TILES);
 }
 
+// 段差の上限。全季節で段差ありだが、各季節の序盤は控えめにする(春は5面〜)。
 export function heightCapForStage(stage) {
-  if (stage < 4) return 0;
-  if (stage < 9) return 1;
-  if (stage < 15) return 2;
-  return MAX_HEIGHT;
+  const s = seasonForStage(stage);
+  const within = ((stage - 1) % 10) + 1;
+  if (s === 'spring') return within >= 5 ? 1 : 0;
+  if (s === 'summer') return within >= 4 ? 2 : 1;
+  if (s === 'autumn') return within >= 4 ? 2 : 1;
+  if (s === 'winter') return within >= 4 ? 3 : 2;
+  return MAX_HEIGHT; // allin
 }
 
 // ---------- ステージコード ----------
@@ -233,6 +275,8 @@ export function generate(seed, stage) {
     const heights = genTerrain(rand, stage, cap);
     const level = tryGenerate(rand, n, seed, stage, heights);
     if (level) {
+      level.season = seasonForStage(stage);
+      level.background = backgroundSeasonForStage(seed, stage);
       level.minMoves = computeMinMoves(level);
       return level;
     }
@@ -246,9 +290,10 @@ function tryGenerate(rand, n, seed, stage, heights) {
   const key = (x, y) => x * 16 + y;
   const inGrid = (x, y) => x >= 0 && y >= 0 && x < GRID && y < GRID;
 
-  const pGold = stage >= GOLD_STAGE ? P_GOLD : 0;
-  const pSpring = stage >= SPRING_STAGE ? P_SPRING : 0;
-  const pCart = stage >= CART_STAGE ? P_CART : 0;
+  const prof = seasonProfile(seed, stage);
+  const pGold = prof.allowGold ? P_GOLD : 0;
+  const pSpring = prof.allowSpring ? P_SPRING : 0;
+  const pCart = prof.allowCart ? P_CART : 0;
   let golds = 0;
   let springs = 0;
   let carts = 0;
@@ -374,7 +419,7 @@ function tryGenerate(rand, n, seed, stage, heights) {
         cur.value = o.need;
         // 線路を占有して将来マスが割り込まないようにする(停止位置を固定)
         for (const c of corridor) occ.add(c);
-        tiles.push({ x: cx, y: cy, value: lo.p, cart: true, rail: [o.dx, o.dy] });
+        tiles.push({ x: cx, y: cy, value: lo.p, cart: true, rail: [o.dx, o.dy], sled: prof.sled });
         occ.add(key(cx, cy));
         const landTile = { x: lo.tx, y: lo.ty, value: 0 };
         rollFlags(landTile);

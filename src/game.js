@@ -8,6 +8,7 @@ import {
   makeCode,
   parseCode,
   GOLD_MULT,
+  seasonForStage,
 } from './level.js';
 import { GameScene } from './scene3d.js';
 import { Sfx } from './sfx.js';
@@ -22,6 +23,15 @@ const NO_HINT_BONUS = 100; // ヒント未使用クリアのボーナス
 const PERFECT_BONUS = 300; // 全マス回収クリア(じっくり派)
 const SPEED_BONUS = 300; // 最短手数+1以内クリア(駆け抜け派)
 const retryMult = (r) => (r === 0 ? 1.5 : r >= 3 ? 0.5 : 1.0); // リトライ倍率
+
+// 季節の導入説明(季節の頭で1枚はさむ)
+const SEASON_INTRO = {
+  spring: { emoji: '🌸', name: '春', color: '#ff9ec7', text: 'まずは基本！<br>ニンジンを集めて、ゴールでまつ<b>ピンクのウサギ</b>をめざそう。' },
+  summer: { emoji: '☀️', name: '夏', color: '#2fb2e0', text: '<b>ジャンプ台</b>とうじょう！<br>のって飛ぶと<b>2マス遠く</b>までとべるよ。' },
+  autumn: { emoji: '🍂', name: '秋', color: '#e0842f', text: '<b>人間</b>があらわれた！<br>人間が<b>見ている方向</b>に降りると、走ってきて捕まる。<br>ジャンプするたびに人間の向きが変わるよ。' },
+  winter: { emoji: '❄️', name: '冬', color: '#4aa3d6', text: '<b>ソリ</b>にのって、進んだ方向へすべって、<br>かべ(段差や畑)の手前で止まる。<br>止まった所から<b>数字ぶん</b>ジャンプ！' },
+  allin: { emoji: '🎊', name: 'ぜんぶ！', color: '#7c5cff', text: 'ここからは<b>ぜんぶ</b>でてくる！<br>季節（背景）も10面ごとに変わるよ。' },
+};
 
 const $ = (id) => document.getElementById(id);
 const fmt = (n) => n.toLocaleString('ja-JP');
@@ -239,6 +249,12 @@ export class Game {
       this._hide('modal-over');
       this._showTitle();
     };
+    // 季節の説明画面を閉じて、そのステージへ登場
+    $('btn-season-go').onclick = () => {
+      this.sfx.click();
+      this._hide('modal-season');
+      this._beginEntrance();
+    };
 
     // HUDボタン
     $('btn-rewind').onclick = () => this.useRewind();
@@ -348,9 +364,10 @@ export class Game {
   _showTitle() {
     this.state = 'title';
     this.sfx.stopBgm(); // タイトルに戻ったらBGMは止める
+    this._lastIntroKey = null; // 次に始めたら季節説明を出し直す
     this._hideTutorial(false);
     this._cancelClearSeq();
-    for (const id of ['modal-help', 'modal-continue', 'modal-clear', 'modal-over', 'modal-share']) {
+    for (const id of ['modal-help', 'modal-continue', 'modal-clear', 'modal-over', 'modal-share', 'modal-season']) {
       this._hide(id);
     }
     this._show('screen-title');
@@ -441,6 +458,7 @@ export class Game {
     this.stage = 1;
     this.score = 0;
     this.retryCount = 0;
+    this._lastIntroKey = null;
     this.startStage();
   }
 
@@ -466,7 +484,19 @@ export class Game {
 
     this._hideTutorial(false);
 
-    // 白ウサギの登場シーン（操作キャラだと分かるように毎ステージ再生）
+    this.state = 'busy';
+    // 季節の切り替わりでは、先に一枚の説明画面を挟んでから登場させる
+    const introKey = this._seasonIntroKey(this.stage);
+    if (introKey && introKey !== this._lastIntroKey) {
+      this._lastIntroKey = introKey;
+      this._showSeasonIntro(introKey);
+    } else {
+      this._beginEntrance();
+    }
+  }
+
+  // 白ウサギの登場シーン（操作キャラだと分かるように毎ステージ再生）
+  _beginEntrance() {
     this.state = 'busy';
     this.sfx.warp();
     this.scene.playEntrance().then(() => {
@@ -480,6 +510,23 @@ export class Game {
       this._updateReachable();
       this._maybeShowGimmickTutorial();
     });
+  }
+
+  // 季節の説明画面を出すべきステージなら季節キーを返す(春/夏/秋/冬の頭 と 41面=全部入り)
+  _seasonIntroKey(stage) {
+    if (stage === 41) return 'allin';
+    if (stage <= 40 && (stage - 1) % 10 === 0) return seasonForStage(stage);
+    return null;
+  }
+
+  _showSeasonIntro(key) {
+    const info = SEASON_INTRO[key];
+    $('season-emoji').textContent = info.emoji;
+    $('season-name').textContent = info.name;
+    $('season-text').innerHTML = info.text;
+    const box = $('modal-season').querySelector('.season-box');
+    box.style.setProperty('--season-color', info.color);
+    this._show('modal-season');
   }
 
   retryStage() {
@@ -570,7 +617,11 @@ export class Game {
       }
 
       const el = $('tut-balloon');
-      el.innerHTML = tut.html;
+      // 冬のソリはトロッコと同機能だが、文言だけ「ソリ」にする
+      el.innerHTML =
+        tut.flag === '_tut_cart' && cands.some((t) => t.sled)
+          ? '🛷 <b>ソリ</b>のマス！乗ると<b>進んだ方向</b>へ<br>すべって、かべ(段差や畑)の手前で止まるよ。<br>止まった所から<b>数字ぶん</b>ジャンプ！'
+          : tut.html;
       el.style.left = `${best.x}px`;
       el.style.top = `${best.y}px`;
       el.classList.remove('hidden');
