@@ -533,21 +533,29 @@ function tryGenerate(rand, n, seed, stage, heights) {
   }
   if (!goal) return null;
 
-  // 使われない段差(畑・線路のかたまりから離れた高マス)を平らにする。
-  // 占有セル(畑・トロッコ線路)とその周囲は残す=トロッコの停止壁や段差の斜面を壊さない。
+  // 段差は「畑(と線路・ゴール)のあるマスだけ」に残し、それ以外は平らにする。
+  // こうすると畑の無い段差(使われない段差)や、畑が段差の陰に隠れるケースが無くなる。
+  // 残すのは: 占有セル(畑+トロッコ線路) / ゴール / トロッコの停止壁(高さで止まるため)。
   // (平地ステージでは heights が全て0なので何も起きない)
   {
-    const near = new Set();
-    const around = (x, y) => {
-      for (let ax = x - 1; ax <= x + 1; ax++)
-        for (let ay = y - 1; ay <= y + 1; ay++)
-          if (ax >= 0 && ay >= 0 && ax < GRID && ay < GRID) near.add(key(ax, ay));
-    };
-    for (const k of occ) around(Math.floor(k / 16), k % 16); // 占有セル(畑+線路)の周囲
-    around(goal.x, goal.y);
+    const keep = new Set(occ);
+    keep.add(key(goal.x, goal.y));
+    for (const t of tiles) {
+      if (!t.cart) continue;
+      const [dx, dy] = t.rail;
+      let x = t.x;
+      let y = t.y;
+      while (occ.has(key(x + dx, y + dy))) {
+        x += dx;
+        y += dy;
+      }
+      const wx = x + dx;
+      const wy = y + dy;
+      if (wx >= 0 && wy >= 0 && wx < GRID && wy < GRID) keep.add(key(wx, wy));
+    }
     for (let x = 0; x < GRID; x++) {
       for (let y = 0; y < GRID; y++) {
-        if (!near.has(key(x, y))) heights[x][y] = 0;
+        if (!keep.has(key(x, y))) heights[x][y] = 0;
       }
     }
   }
