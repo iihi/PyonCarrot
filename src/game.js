@@ -9,6 +9,8 @@ import {
   parseCode,
   GOLD_MULT,
   seasonForStage,
+  isCaught,
+  humanDangerCells,
 } from './level.js';
 import { GameScene } from './scene3d.js';
 import { Sfx } from './sfx.js';
@@ -133,7 +135,7 @@ export class Game {
     if (!this._debug || this.state !== 'playing') return;
     let guard = 0;
     while (this.state === 'playing' && guard++ < 60) {
-      const path = findSolution(this.level, this.alive, this.stance);
+      const path = findSolution(this.level, this.alive, this.stance, this.jumps);
       if (!path || !path.length) break;
       const step = path[0];
       if (!this.reachable.includes(step)) break;
@@ -470,6 +472,7 @@ export class Game {
     this.stance = stanceFromTile(this.level, 0);
     this.carrots = 0; // ニンジンは持ち越さない
     this.hintsUsed = 0;
+    this.jumps = 0; // これまでのジャンプ回数(人間の向きの計算に使う)
     this.history = [];
 
     this._hide('screen-title');
@@ -584,13 +587,23 @@ export class Game {
         prefer: () => 0,
         html: '🛒 <b>トロッコ</b>のマス！乗ると<b>進んだ方向</b>へ<br />走って、かべ(段差や畑)の手前で止まるよ。<br />止まった所から<b>数字ぶん</b>ジャンプ！',
       },
+      {
+        flag: '_tut_human',
+        src: 'humans',
+        pick: () => true,
+        prefer: () => 0,
+        html: '👨‍🌾 <b>人間</b>！見ている方向(<b>赤いマス</b>)に<br />降りると走ってきて捕まる。<br />ジャンプするたびに向きが90°変わるよ',
+      },
     ];
 
     for (const tut of TUTS) {
       try {
         if (localStorage.getItem(SAVE_KEY + tut.flag)) continue;
       } catch (e) {}
-      const cands = this.level.tiles.filter(tut.pick);
+      const cands =
+        tut.src === 'humans'
+          ? this.level.humans || []
+          : this.level.tiles.filter(tut.pick);
       if (!cands.length) continue;
 
       const cw = this.scene.canvas.clientWidth;
@@ -658,6 +671,9 @@ export class Game {
   _updateReachable() {
     this.reachable = reachableFrom(this.level, this.alive, this.stance);
     this.scene.setReachable(this.reachable);
+    // 人間の向き＆危険マス(赤)を今のジャンプ回数で更新
+    this.scene.setHumanFacing(this.jumps);
+    this.scene.setDanger(humanDangerCells(this.level, this.jumps));
     // 空きマス(トロッコ降車後)ではそのマスに次のジャンプ力を表示
     this.scene.setRabbitNumber(
       this.curIdx === -1 ? this.stance.power : null,
@@ -702,6 +718,7 @@ export class Game {
       stance: fromStance,
       curIdx: fromIdx,
       eaten: landInfo ? landInfo.eaten.slice() : [],
+      jumps: this.jumps,
     });
 
     this.sfx[onSpring ? 'boing' : 'hop']();
@@ -727,11 +744,33 @@ export class Game {
 
     this.stance = landInfo.stance;
     this.curIdx = tile.cart ? -1 : id;
+
+    // 人間に見られている向きの直線上に降りたら捕まる(現在の向き=this.jumpsで判定)
+    if (isCaught(this.level, this.stance.x, this.stance.y, this.jumps)) {
+      this.jumps++;
+      await this.scene.humanCatch(this.stance);
+      this._gameOverCaught();
+      return;
+    }
+    this.jumps++; // 安全に着地 → 人間が90°回る
+
     this.scene.setOnSpring(this.curIdx >= 0 && this.level.tiles[this.curIdx].spring);
 
     this.state = 'playing';
     this._updateHUD();
     this._updateReachable();
+  }
+
+  _gameOverCaught() {
+    this.state = 'over';
+    this.sfx.gameover();
+    $('over-msg').textContent = '人間につかまっちゃった…';
+    $('over-score').textContent = fmt(this.score);
+    $('btn-rewind-over').classList.toggle(
+      'hidden',
+      !(this.carrots >= COST_REWIND && this.history.length > 0)
+    );
+    setTimeout(() => this._show('modal-over'), 900);
   }
 
   // 一度だけ出す説明トースト
@@ -975,6 +1014,7 @@ export class Game {
 
     this.stance = prev.stance;
     this.curIdx = prev.curIdx;
+    this.jumps = prev.jumps || 0; // 人間の向きも巻き戻す
     this.scene.setOnSpring(
       this.curIdx >= 0 && this.level.tiles[this.curIdx].spring
     );
@@ -989,7 +1029,7 @@ export class Game {
       this._toast(`ニンジンが足りません（ヒントは${COST_HINT}本）`);
       return;
     }
-    const path = findSolution(this.level, this.alive, this.stance);
+    const path = findSolution(this.level, this.alive, this.stance, this.jumps);
     if (!path) {
       this._toast('この状態ではクリアできません。まきもどしを使おう！');
       return;

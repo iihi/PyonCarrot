@@ -9,10 +9,11 @@ import {
   makeNumberSprite,
   makeRing,
   makeTerrain,
+  makeHuman,
   SEASON_BG,
   HSTEP,
 } from './models.js';
-import { GRID } from './level.js';
+import { GRID, humanFacingVec } from './level.js';
 
 const easeOut = (t) => 1 - Math.pow(1 - t, 3);
 const easeInOut = (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
@@ -70,6 +71,8 @@ export class GameScene {
     this.tileMeshes = [];
     this.goalMesh = null;
     this.minis = []; // にぎやかしの極小ウサギ
+    this.humans = []; // 見張りの人間
+    this.dangerMeshes = []; // 人間の視線(危険マス)の赤表示
     this.reach = []; // 今飛べるマス(マス全体を明滅させて示す)
     this.hintId = null; // ヒント対象(別色で明滅)
     this.tweens = [];
@@ -155,6 +158,9 @@ export class GameScene {
     this.setRabbitNumber(null);
     for (const t of this.tileMeshes) this.world.remove(t.group);
     if (this.goalMesh) this.world.remove(this.goalMesh);
+    for (const h of this.humans) this.world.remove(h.group);
+    this.humans = [];
+    this.setDanger([]);
     this.clearRings();
     this.clearHint();
     this.tweens = [];
@@ -213,6 +219,16 @@ export class GameScene {
     this.tween(0.5, level.tiles.length * 0.03, easeOut, (k) => {
       this.goalMesh.scale.setScalar(Math.max(k, 0.01));
     });
+
+    // 見張りの人間
+    for (const hu of level.humans || []) {
+      const group = makeHuman();
+      const base = this.worldPos(hu.x, hu.y, this._cellY(hu.x, hu.y));
+      group.position.copy(base);
+      this.world.add(group);
+      this.humans.push({ group, data: hu, base });
+    }
+    this.setHumanFacing(0);
 
     // ウサギは登場シーン(playEntrance)まで隠しておく
     // (スタートマスのニンジンは登場後にウサギが食べる)
@@ -464,6 +480,7 @@ export class GameScene {
     const pts = [
       ...this.level.tiles.map((t) => this.worldPos(t.x, t.y)),
       this.worldPos(this.level.goal.x, this.level.goal.y),
+      ...(this.level.humans || []).map((h) => this.worldPos(h.x, h.y)),
     ];
     const box = new THREE.Box3();
     pts.forEach((p) => box.expandByPoint(p));
@@ -557,6 +574,99 @@ export class GameScene {
 
   clearHint() {
     this.hintId = null;
+  }
+
+  // ---------- 人間ギミック ----------
+  // 各人間を「これまでのジャンプ回数 jumps に応じた向き」へ回す。
+  // (捕獲演出で動いた位置も基準セルへ戻す)
+  setHumanFacing(jumps) {
+    for (const h of this.humans) {
+      h.group.position.copy(h.base);
+      const [dx, dy] = humanFacingVec(h.data, jumps);
+      const target = Math.atan2(dx, dy);
+      const cur = h.group.rotation.y;
+      const delta = Math.atan2(Math.sin(target - cur), Math.cos(target - cur));
+      const tag = 'human' + h.data.x + '_' + h.data.y;
+      this.killTweens(tag);
+      this.tween(
+        0.22,
+        0,
+        easeOut,
+        (k) => {
+          h.group.rotation.y = cur + delta * k;
+        },
+        () => {
+          h.group.rotation.y = target;
+        },
+        tag
+      );
+    }
+  }
+
+  // 危険マス(人間の視線)を地面に赤く表示する
+  setDanger(cells) {
+    for (const m of this.dangerMeshes) {
+      this.world.remove(m);
+      m.geometry.dispose();
+      m.material.dispose();
+    }
+    this.dangerMeshes = [];
+    for (const c of cells) {
+      const plane = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.96, 0.96),
+        new THREE.MeshBasicMaterial({
+          color: 0xff1414,
+          transparent: true,
+          opacity: 0.45,
+          depthWrite: false,
+          depthTest: false, // 畑の土台の上にも重ねて、視線の帯が途切れず見えるように
+        })
+      );
+      plane.rotation.x = -Math.PI / 2;
+      plane.position.copy(this.worldPos(c.x, c.y, this._cellY(c.x, c.y) + 0.06));
+      plane.renderOrder = 6;
+      this.world.add(plane);
+      this.dangerMeshes.push(plane);
+    }
+  }
+
+  // 捕まる演出: 一番近い人間がウサギの手前まで走ってきて捕まえる
+  humanCatch(stance) {
+    return new Promise((resolve) => {
+      const target = this.worldPos(stance.x, stance.y, this._standY(stance.x, stance.y));
+      let best = null;
+      let bd = Infinity;
+      for (const h of this.humans) {
+        const p = h.group.position;
+        const d = Math.hypot(p.x - target.x, p.z - target.z);
+        if (d < bd) {
+          bd = d;
+          best = h;
+        }
+      }
+      this.killTweens('rabbit');
+      if (!best) {
+        resolve();
+        return;
+      }
+      const p0 = best.group.position.clone();
+      const p1 = new THREE.Vector3(
+        target.x + (p0.x - target.x) * 0.2,
+        p0.y,
+        target.z + (p0.z - target.z) * 0.2
+      );
+      best.group.rotation.y = Math.atan2(target.x - p0.x, target.z - p0.z);
+      this.tween(0.42, 0, (t) => t, (k) => {
+        best.group.position.lerpVectors(p0, p1, k);
+        best.group.position.y = p0.y + Math.abs(Math.sin(k * Math.PI * 4)) * 0.14;
+      });
+      // ウサギはびっくりしてつかまる(回りながらしぼむ)
+      this.tween(0.34, 0.36, (t) => t, (k) => {
+        this.rabbit.rotation.y += 0.5;
+        this.rabbit.position.y = this._standY(stance.x, stance.y) + Math.sin(k * Math.PI) * 0.45;
+        this.rabbit.scale.setScalar(1 - 0.55 * k);
+      }, () => resolve(), 'rabbit');
+    });
   }
 
   setNumbersVisible(v) {
@@ -722,6 +832,7 @@ export class GameScene {
   // まきもどし：ウサギが今の位置から toStance の位置へ戻る(ふわっとホップ)
   rewindHop(toStance) {
     return new Promise((resolve) => {
+      this.rabbit.scale.setScalar(1); // 捕獲でしぼんでいた場合に戻す
       const p0 = this.rabbit.position.clone();
       const p1 = this.worldPos(
         toStance.x,
@@ -970,6 +1081,12 @@ export class GameScene {
         mm.m.emissive.setHex(col);
         mm.m.emissiveIntensity = inten;
       }
+    }
+
+    // 人間の危険マス(赤)を明滅させる
+    if (this.dangerMeshes.length) {
+      const dp = 0.38 + 0.16 * Math.sin(this.time * 6);
+      for (const m of this.dangerMeshes) m.material.opacity = dp;
     }
 
     // ゴールのピンクウサギの待機モーション

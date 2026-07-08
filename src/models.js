@@ -418,6 +418,45 @@ export function makeGoalRabbit() {
   return outer;
 }
 
+// ---------- 人間（畑を見張る農夫。見ている向き＝ローカル+z） ----------
+export function makeHuman() {
+  const g = new THREE.Group();
+  const inner = new THREE.Group();
+  g.add(inner);
+  const skin = mat(0xf1c39c);
+  const shirt = mat(0xd8503f); // 赤いシャツ
+  const overalls = mat(0x37589a); // 青いつなぎ
+  const straw = mat(0xe8c66a); // 麦わら帽子
+  const dark = mat(0x2b2b2b, { roughness: 0.4 });
+
+  // 脚
+  for (const s of [-1, 1]) {
+    inner.add(mesh(new THREE.BoxGeometry(0.16, 0.34, 0.18), overalls, s * 0.11, 0.17, 0));
+  }
+  // 胴(シャツ)＋つなぎの胸当て
+  inner.add(mesh(new THREE.BoxGeometry(0.42, 0.4, 0.28), shirt, 0, 0.56, 0));
+  inner.add(mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), overalls, 0, 0.5, 0.006));
+  // 腕
+  for (const s of [-1, 1]) {
+    const arm = mesh(new THREE.BoxGeometry(0.12, 0.36, 0.14), shirt, s * 0.29, 0.55, 0);
+    arm.rotation.z = s * 0.12;
+    inner.add(arm);
+  }
+  // 首・頭
+  inner.add(mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.06, 6), skin, 0, 0.78, 0));
+  inner.add(mesh(new THREE.SphereGeometry(0.19, 8, 7), skin, 0, 0.94, 0));
+  // 目(顔＝+z 側)
+  for (const s of [-1, 1]) {
+    inner.add(mesh(new THREE.SphereGeometry(0.028, 6, 5), dark, s * 0.07, 0.96, 0.17));
+  }
+  // 麦わら帽子(つば＋山)
+  inner.add(mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.03, 12), straw, 0, 1.06, 0));
+  inner.add(mesh(new THREE.CylinderGeometry(0.15, 0.17, 0.14, 10), straw, 0, 1.13, 0));
+
+  g.userData.inner = inner;
+  return g;
+}
+
 // ---------- ゴール（ピンクウサギ＋花の台座＋旗） ----------
 export function makeGoal() {
   const g = new THREE.Group();

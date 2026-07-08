@@ -74,6 +74,19 @@ const DIRS = [
   [0, -1],
 ];
 
+// 人間が向く4方向を90°ずつ回す順(1ジャンプごとに +1 で回転)
+export const HUMAN_ROT = [
+  [1, 0],
+  [0, 1],
+  [-1, 0],
+  [0, -1],
+];
+
+// これまでのジャンプ回数 jumps における、人間の向きベクトル
+export function humanFacingVec(human, jumps) {
+  return HUMAN_ROT[(((human.dir + jumps) % 4) + 4) % 4];
+}
+
 // ---------- 難易度カーブ ----------
 // 各季節で盤面サイズをリセット(季節頭は小さめ→季節内で増やす)。
 // 新ギミックを小さい盤面で導入できるようにするため。
@@ -195,6 +208,55 @@ export function tilePower(tile) {
   return tile.value + (tile.spring ? SPRING_BONUS : 0);
 }
 
+// ---------- 人間ギミック ----------
+// 人間はマス上に立ち、見ている向きの直線上(段差でさえぎられるまで)を監視する。
+// ジャンプ回数 jumps のときに (x,y) が捕獲範囲なら true。
+// (自分の高さより高い地形で視線は止まる。そのマス自身が高い場合も見えない=捕まらない)
+export function isCaught(level, x, y, jumps) {
+  const humans = level.humans;
+  if (!humans || !humans.length) return false;
+  const h = level.heights;
+  for (const hu of humans) {
+    const [dx, dy] = humanFacingVec(hu, jumps);
+    // 向きの直線上にあるか(同じ行/列で、向いている側)
+    if (dx !== 0) {
+      if (y !== hu.y || Math.sign(x - hu.x) !== dx) continue;
+    } else {
+      if (x !== hu.x || Math.sign(y - hu.y) !== dy) continue;
+    }
+    const hh = h[hu.x][hu.y];
+    let cx = hu.x + dx;
+    let cy = hu.y + dy;
+    while (cx >= 0 && cy >= 0 && cx < GRID && cy < GRID) {
+      if (h[cx][cy] > hh) break; // 高い地形で視線が止まる
+      if (cx === x && cy === y) return true;
+      cx += dx;
+      cy += dy;
+    }
+  }
+  return false;
+}
+
+// いま(ジャンプ回数 jumps)の危険マス一覧(赤表示用)
+export function humanDangerCells(level, jumps) {
+  const res = [];
+  if (!level.humans || !level.humans.length) return res;
+  const h = level.heights;
+  for (const hu of level.humans) {
+    const [dx, dy] = humanFacingVec(hu, jumps);
+    const hh = h[hu.x][hu.y];
+    let cx = hu.x + dx;
+    let cy = hu.y + dy;
+    while (cx >= 0 && cy >= 0 && cx < GRID && cy < GRID) {
+      if (h[cx][cy] > hh) break;
+      res.push({ x: cx, y: cy });
+      cx += dx;
+      cy += dy;
+    }
+  }
+  return res;
+}
+
 // ---------- スタンス(ウサギの立ち位置と次のジャンプ力) ----------
 // { x, y, h(地形高さ), power(次のジャンプ力), id(メモ用キー) }
 export function stanceFromTile(level, idx) {
@@ -281,7 +343,7 @@ export function generate(seed, stage) {
     const level = tryGenerate(rand, n, seed, stage, heights);
     if (level) {
       // その季節のポイントギミックが1つも無いステージは作り直す
-      // (人間はフェーズ2で生成対応するまで保証しない)
+      // (人間の必須化・安全ルート保証は tryGenerate 側で担保)
       const okSpring = !prof.requireSpring || level.tiles.some((t) => t.spring);
       const okCart = !prof.requireCart || level.tiles.some((t) => t.cart);
       if (okSpring && okCart) {
@@ -454,7 +516,67 @@ function tryGenerate(rand, n, seed, stage, heights) {
   }
   if (!goal) return null;
 
-  return { seed, stage, tiles, goal, heights, count: tiles.length };
+  const level = { seed, stage, tiles, goal, heights, count: tiles.length, humans: [] };
+
+  // 人間の配置: 空きマスに立たせ、初期向きでスタートを狙っておらず、
+  // かつ「捕まらずゴールできる安全ルート」が残る配置を探す。
+  if (prof.allowHuman) {
+    const want =
+      prof.season === 'autumn'
+        ? tiles.length >= 16
+          ? 2
+          : 1
+        : (rand() < 0.5 ? 1 : 0) + (rand() < 0.2 ? 1 : 0);
+    if (want > 0) {
+      // 人間は畑のかたまりの近く(bboxを1マス広げた範囲)に置いて、画面内・危険が絡むようにする
+      let minX = GRID, maxX = 0, minY = GRID, maxY = 0;
+      for (const t of tiles) {
+        minX = Math.min(minX, t.x); maxX = Math.max(maxX, t.x);
+        minY = Math.min(minY, t.y); maxY = Math.max(maxY, t.y);
+      }
+      minX = Math.min(minX, goal.x); maxX = Math.max(maxX, goal.x);
+      minY = Math.min(minY, goal.y); maxY = Math.max(maxY, goal.y);
+      const x0 = Math.max(0, minX - 1), x1 = Math.min(GRID - 1, maxX + 1);
+      const y0 = Math.max(0, minY - 1), y1 = Math.min(GRID - 1, maxY + 1);
+      const empty = [];
+      for (let x = x0; x <= x1; x++) {
+        for (let y = y0; y <= y1; y++) {
+          if (occ.has(key(x, y))) continue;
+          if (x === goal.x && y === goal.y) continue;
+          empty.push({ x, y });
+        }
+      }
+      const startStance = stanceFromTile(level, 0);
+      const aliveAll = tiles.map((_, i) => i !== 0);
+      for (let attempt = 0; attempt < 24 && empty.length; attempt++) {
+        const used = new Set();
+        const hs = [];
+        for (let k = 0; k < want; k++) {
+          let cell = null;
+          for (let tries = 0; tries < 12; tries++) {
+            const c = empty[Math.floor(rand() * empty.length)];
+            if (!used.has(key(c.x, c.y))) {
+              cell = c;
+              break;
+            }
+          }
+          if (!cell) break;
+          used.add(key(cell.x, cell.y));
+          hs.push({ x: cell.x, y: cell.y, dir: Math.floor(rand() * 4) });
+        }
+        if (!hs.length) continue;
+        level.humans = hs;
+        // 初期状態(0ジャンプ)でスタートが視線に入っていない
+        if (isCaught(level, tiles[0].x, tiles[0].y, 0)) continue;
+        // 捕まらずクリアできる手順が存在する
+        if (findSolution(level, aliveAll, startStance)) break;
+        level.humans = [];
+      }
+    }
+    if (prof.requireHuman && !level.humans.length) return null;
+  }
+
+  return level;
 }
 
 // ---------- 最短手数(スピードボーナス用のBFS) ----------
@@ -462,9 +584,10 @@ export function computeMinMoves(level) {
   const n = level.tiles.length;
   const full = (1 << n) - 1;
   const start = stanceFromTile(level, 0);
+  const hasHumans = !!(level.humans && level.humans.length);
   const seen = new Set();
-  let frontier = [{ stance: start, mask: full & ~1 }];
-  seen.add(start.id + '|' + (full & ~1));
+  let frontier = [{ stance: start, mask: full & ~1, jumps: 0 }];
+  seen.add(start.id + '|' + (full & ~1) + '|0');
   for (let moves = 1; moves <= n + 1; moves++) {
     const next = [];
     for (const st of frontier) {
@@ -477,12 +600,14 @@ export function computeMinMoves(level) {
         const t = level.tiles[i];
         if (!canJumpXY(level, s.x, s.y, s.h, s.power, t.x, t.y)) continue;
         const { stance, eaten } = landStanceM(level, st.mask, s.x, s.y, i);
+        if (hasHumans && isCaught(level, stance.x, stance.y, st.jumps)) continue;
         let m2 = st.mask;
         for (const e of eaten) m2 &= ~(1 << e);
-        const k = stance.id + '|' + m2;
+        const nj = st.jumps + 1;
+        const k = stance.id + '|' + m2 + (hasHumans ? '|' + (nj & 3) : '');
         if (!seen.has(k)) {
           seen.add(k);
-          next.push({ stance, mask: m2 });
+          next.push({ stance, mask: m2, jumps: nj });
         }
       }
     }
@@ -512,15 +637,17 @@ export function reachableFrom(level, alive, stance) {
 // ---------- ソルバー(ヒント用) ----------
 // 1) ここから全マス回収してゴール(パーフェクト)がまだ可能ならその一手
 // 2) 不可能なら、とにかくゴールへ着けるルートの一手
-export function findSolution(level, alive, stance) {
+export function findSolution(level, alive, stance, jumps0 = 0) {
   const n = level.tiles.length;
   let mask = 0;
   for (let i = 0; i < n; i++) if (alive[i]) mask |= 1 << i;
 
+  const hasHumans = !!(level.humans && level.humans.length);
+
   const search = (needPerfect) => {
     const failed = new Set();
-    const dfs = (s, m) => {
-      const memoKey = s.id + '|' + m;
+    const dfs = (s, m, jumps) => {
+      const memoKey = s.id + '|' + m + (hasHumans ? '|' + (jumps & 3) : '');
       if (failed.has(memoKey)) return null;
       if (!needPerfect || m === 0) {
         if (canJumpXY(level, s.x, s.y, s.h, s.power, level.goal.x, level.goal.y)) {
@@ -532,15 +659,17 @@ export function findSolution(level, alive, stance) {
         const t = level.tiles[i];
         if (!canJumpXY(level, s.x, s.y, s.h, s.power, t.x, t.y)) continue;
         const { stance: s2, eaten } = landStanceM(level, m, s.x, s.y, i);
+        // 人間の視線に降りる手は不可(捕まる)
+        if (hasHumans && isCaught(level, s2.x, s2.y, jumps)) continue;
         let nm = m;
         for (const e of eaten) nm &= ~(1 << e);
-        const rest = dfs(s2, nm);
+        const rest = dfs(s2, nm, jumps + 1);
         if (rest) return [i, ...rest];
       }
       failed.add(memoKey);
       return null;
     };
-    return dfs(stance, mask);
+    return dfs(stance, mask, jumps0);
   };
 
   return search(true) || search(false);
