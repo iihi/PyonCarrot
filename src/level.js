@@ -101,12 +101,12 @@ export function tileCountForStage(stage) {
   return Math.min(8 + (stage - ALLIN_STAGE), MAX_TILES); // 8 → 30(stage 30で30)
 }
 
-// 段差の上限。全季節で段差ありだが控えめ(春は3面〜、各季節の頂点で最高の約半分)。
+// 段差の上限。春は4面〜、夏以降はデフォルトで段差あり。各季節の頂点で最高の約半分。
 export function heightCapForStage(stage) {
   const s = seasonForStage(stage);
   const within = ((stage - 1) % SEASON_LEN) + 1; // 1..5
-  if (s === 'spring') return within >= 3 ? 1 : 0; // 段差は3面〜
-  if (s === 'summer') return within >= 3 ? 1 : 0;
+  if (s === 'spring') return within >= 4 ? 1 : 0; // 春は4面〜
+  if (s === 'summer') return 1; // 夏以降はデフォルトあり
   if (s === 'autumn') return within >= 3 ? 2 : 1;
   if (s === 'winter') return within >= 3 ? 2 : 1;
   // allin: 1 → 2 → 3 と段階的に上げる
@@ -371,19 +371,31 @@ export function generate(seed, stage) {
     }
     if (attempt > 550 && n > 8) n--;
   }
+  // 保険: 通常生成が全滅しても、平地・ギミック無しで必ず1つ作る(ゲームのフリーズ防止)
+  for (let attempt = 0; attempt < 400; attempt++) {
+    const heights = genTerrain(rand, 1, 0); // 平地
+    const nn = Math.max(6, n - Math.floor(attempt / 50));
+    const level = tryGenerate(rand, nn, seed, stage, heights, true);
+    if (level) {
+      level.season = seasonForStage(stage);
+      level.background = backgroundSeasonForStage(seed, stage);
+      level.minMoves = computeMinMoves(level);
+      return level;
+    }
+  }
   throw new Error('stage generation failed');
 }
 
-function tryGenerate(rand, n, seed, stage, heights) {
+function tryGenerate(rand, n, seed, stage, heights, relax = false) {
   const occ = new Set();
   const key = (x, y) => x * 16 + y;
   const inGrid = (x, y) => x >= 0 && y >= 0 && x < GRID && y < GRID;
 
   const prof = seasonProfile(seed, stage);
-  const pGold = prof.allowGold ? P_GOLD : 0;
-  // その季節のポイントギミックは出現率を上げて、毎ステージ確実に出やすくする
-  const pSpring = prof.allowSpring ? (prof.requireSpring ? 0.35 : P_SPRING) : 0;
-  const pCart = prof.allowCart ? (prof.requireCart ? 0.4 : P_CART) : 0;
+  // relax(保険生成)ではギミック・人間を一切入れず、素直に解ける平地ステージにする
+  const pGold = relax ? 0 : prof.allowGold ? P_GOLD : 0;
+  const pSpring = relax ? 0 : prof.allowSpring ? (prof.requireSpring ? 0.35 : P_SPRING) : 0;
+  const pCart = relax ? 0 : prof.allowCart ? (prof.requireCart ? 0.4 : P_CART) : 0;
   let golds = 0;
   let springs = 0;
   let carts = 0;
@@ -533,13 +545,21 @@ function tryGenerate(rand, n, seed, stage, heights) {
   }
   if (!goal) return null;
 
-  // 段差は「畑(と線路・ゴール)のあるマスだけ」に残し、それ以外は平らにする。
-  // こうすると畑の無い段差(使われない段差)や、畑が段差の陰に隠れるケースが無くなる。
-  // 残すのは: 占有セル(畑+トロッコ線路) / ゴール / トロッコの停止壁(高さで止まるため)。
+  // 段差は「畑のかたまり(bbox+1)の範囲」だけ残し、そこから離れた段差は平らにする。
+  // 空の段差はOK(畑と同じ場所に段差があるのは自然)。畑と別の場所に段差だけ広がって
+  // 一切使われない、という状態だけを防ぐ。トロッコの停止壁も残す(高さで止まるため)。
   // (平地ステージでは heights が全て0なので何も起きない)
   {
-    const keep = new Set(occ);
-    keep.add(key(goal.x, goal.y));
+    let minX = GRID, maxX = 0, minY = GRID, maxY = 0;
+    for (const t of tiles) {
+      minX = Math.min(minX, t.x); maxX = Math.max(maxX, t.x);
+      minY = Math.min(minY, t.y); maxY = Math.max(maxY, t.y);
+    }
+    minX = Math.min(minX, goal.x); maxX = Math.max(maxX, goal.x);
+    minY = Math.min(minY, goal.y); maxY = Math.max(maxY, goal.y);
+    const x0 = Math.max(0, minX - 1), x1 = Math.min(GRID - 1, maxX + 1);
+    const y0 = Math.max(0, minY - 1), y1 = Math.min(GRID - 1, maxY + 1);
+    const wall = new Set();
     for (const t of tiles) {
       if (!t.cart) continue;
       const [dx, dy] = t.rail;
@@ -551,11 +571,12 @@ function tryGenerate(rand, n, seed, stage, heights) {
       }
       const wx = x + dx;
       const wy = y + dy;
-      if (wx >= 0 && wy >= 0 && wx < GRID && wy < GRID) keep.add(key(wx, wy));
+      if (wx >= 0 && wy >= 0 && wx < GRID && wy < GRID) wall.add(key(wx, wy));
     }
     for (let x = 0; x < GRID; x++) {
       for (let y = 0; y < GRID; y++) {
-        if (!keep.has(key(x, y))) heights[x][y] = 0;
+        const inArea = x >= x0 && x <= x1 && y >= y0 && y <= y1;
+        if (!inArea && !occ.has(key(x, y)) && !wall.has(key(x, y))) heights[x][y] = 0;
       }
     }
   }
@@ -564,7 +585,7 @@ function tryGenerate(rand, n, seed, stage, heights) {
 
   // 人間の配置(捕獲は非致死=ニンジンを奪うだけなので解の検証は不要)。
   // 畑のかたまりの近くに置き、初期向きで「畑が視線に入る」有効な向きにする(スタートは狙わない)。
-  if (prof.allowHuman) {
+  if (prof.allowHuman && !relax) {
     const want =
       prof.season === 'autumn'
         ? tiles.length >= 12
@@ -627,7 +648,7 @@ function tryGenerate(rand, n, seed, stage, heights) {
       }
       level.humans = hs;
     }
-    if (prof.requireHuman && !level.humans.length) return null;
+    if (prof.requireHuman && !relax && !level.humans.length) return null;
   }
 
   return level;
