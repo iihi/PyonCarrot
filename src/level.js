@@ -60,6 +60,10 @@ export function seasonProfile(seed, stage) {
     allowCart: s === 'winter' || s === 'allin',
     allowGold: true,
     sled: bg === 'winter',
+    // その季節のポイントとなるギミックは毎ステージ最低1つ出す(生成で保証)
+    requireSpring: s === 'summer',
+    requireHuman: s === 'autumn', // 人間はフェーズ2で生成対応
+    requireCart: s === 'winter',
   };
 }
 
@@ -270,17 +274,24 @@ export function generate(seed, stage) {
   const rand = mulberry32(mixSeed(seed, stage));
   let n = tileCountForStage(stage);
   const cap = heightCapForStage(stage);
+  const prof = seasonProfile(seed, stage);
 
-  for (let attempt = 0; attempt < 500; attempt++) {
+  for (let attempt = 0; attempt < 800; attempt++) {
     const heights = genTerrain(rand, stage, cap);
     const level = tryGenerate(rand, n, seed, stage, heights);
     if (level) {
-      level.season = seasonForStage(stage);
-      level.background = backgroundSeasonForStage(seed, stage);
-      level.minMoves = computeMinMoves(level);
-      return level;
+      // その季節のポイントギミックが1つも無いステージは作り直す
+      // (人間はフェーズ2で生成対応するまで保証しない)
+      const okSpring = !prof.requireSpring || level.tiles.some((t) => t.spring);
+      const okCart = !prof.requireCart || level.tiles.some((t) => t.cart);
+      if (okSpring && okCart) {
+        level.season = seasonForStage(stage);
+        level.background = backgroundSeasonForStage(seed, stage);
+        level.minMoves = computeMinMoves(level);
+        return level;
+      }
     }
-    if (attempt > 350 && n > 8) n--;
+    if (attempt > 550 && n > 8) n--;
   }
   throw new Error('stage generation failed');
 }
@@ -292,8 +303,9 @@ function tryGenerate(rand, n, seed, stage, heights) {
 
   const prof = seasonProfile(seed, stage);
   const pGold = prof.allowGold ? P_GOLD : 0;
-  const pSpring = prof.allowSpring ? P_SPRING : 0;
-  const pCart = prof.allowCart ? P_CART : 0;
+  // その季節のポイントギミックは出現率を上げて、毎ステージ確実に出やすくする
+  const pSpring = prof.allowSpring ? (prof.requireSpring ? 0.35 : P_SPRING) : 0;
+  const pCart = prof.allowCart ? (prof.requireCart ? 0.4 : P_CART) : 0;
   let golds = 0;
   let springs = 0;
   let carts = 0;
