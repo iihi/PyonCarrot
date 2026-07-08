@@ -29,21 +29,23 @@ const MAX_SPRING = 3;
 const MAX_CARTS = 3;
 
 // ---------- 季節 ----------
-// 1季節=10ステージ: 春(1-10)→夏(11-20)→秋(21-30)→冬(31-40)。41面以降は全部入り。
+// 1季節=5ステージ: 春(1-5)→夏(6-10)→秋(11-15)→冬(16-20)。21面以降は全部入り。
 // 各季節は単独ギミック(段差と金ニンジンは全季節)。
 export const SEASONS = ['spring', 'summer', 'autumn', 'winter'];
+const SEASON_LEN = 5;
+const ALLIN_STAGE = SEASONS.length * SEASON_LEN + 1; // 21
 
 export function seasonForStage(stage) {
-  if (stage <= 40) return SEASONS[Math.floor((stage - 1) / 10)];
+  if (stage < ALLIN_STAGE) return SEASONS[Math.floor((stage - 1) / SEASON_LEN)];
   return 'allin';
 }
 
-// 背景の季節。チュートリアル4季節はその季節、41面以降は10面ごとにseedから擬似ランダム
+// 背景の季節。チュートリアル4季節はその季節、21面以降は5面ごとにseedから擬似ランダム
 // (日時ではなくseed由来なのでコードで再現できる=不正対策)。
 export function backgroundSeasonForStage(seed, stage) {
   const s = seasonForStage(stage);
   if (s !== 'allin') return s;
-  const block = Math.floor((stage - 41) / 10);
+  const block = Math.floor((stage - ALLIN_STAGE) / SEASON_LEN);
   const r = mulberry32(mixSeed(seed, 90210 + block))();
   return SEASONS[Math.floor(r * SEASONS.length)];
 }
@@ -88,26 +90,30 @@ export function humanFacingVec(human, jumps) {
 }
 
 // ---------- 難易度カーブ ----------
-// 各季節で盤面サイズをリセット(季節頭は小さめ→季節内で増やす)。
-// 新ギミックを小さい盤面で導入できるようにするため。
+// チュートリアル各季節(5面)は最高の約半分でピーク。21面以降は1から段階的に最高へ。
+// (急に難しくならないようにするため)
 export function tileCountForStage(stage) {
-  if (stage <= 40) {
-    const within = ((stage - 1) % 10) + 1; // 1..10
-    return Math.min(8 + 2 * (within - 1), MAX_TILES); // 8 → 26
+  if (stage < ALLIN_STAGE) {
+    const within = ((stage - 1) % SEASON_LEN) + 1; // 1..5
+    return Math.min(7 + 2 * (within - 1), MAX_TILES); // 7,9,11,13,15(最高30の約半分)
   }
-  // 全部入り(41面〜)は大きめを維持しつつ緩やかに最大へ
-  return Math.min(24 + Math.floor((stage - 41) / 3), MAX_TILES);
+  // 全部入り(21面〜)は小さめから始めて緩やかに最大へ
+  return Math.min(8 + (stage - ALLIN_STAGE), MAX_TILES); // 8 → 30(stage 30で30)
 }
 
-// 段差の上限。全季節で段差ありだが、各季節の序盤は控えめにする(春は5面〜)。
+// 段差の上限。全季節で段差ありだが控えめ(春は3面〜、各季節の頂点で最高の約半分)。
 export function heightCapForStage(stage) {
   const s = seasonForStage(stage);
-  const within = ((stage - 1) % 10) + 1;
-  if (s === 'spring') return within >= 5 ? 1 : 0;
-  if (s === 'summer') return within >= 4 ? 2 : 1;
-  if (s === 'autumn') return within >= 4 ? 2 : 1;
-  if (s === 'winter') return within >= 4 ? 3 : 2;
-  return MAX_HEIGHT; // allin
+  const within = ((stage - 1) % SEASON_LEN) + 1; // 1..5
+  if (s === 'spring') return within >= 3 ? 1 : 0; // 段差は3面〜
+  if (s === 'summer') return within >= 3 ? 1 : 0;
+  if (s === 'autumn') return within >= 3 ? 2 : 1;
+  if (s === 'winter') return within >= 3 ? 2 : 1;
+  // allin: 1 → 2 → 3 と段階的に上げる
+  const k = stage - ALLIN_STAGE;
+  if (k < 4) return 1;
+  if (k < 10) return 2;
+  return MAX_HEIGHT;
 }
 
 // ---------- ステージコード ----------
@@ -212,29 +218,39 @@ export function tilePower(tile) {
 // 人間はマス上に立ち、見ている向きの直線上(段差でさえぎられるまで)を監視する。
 // ジャンプ回数 jumps のときに (x,y) が捕獲範囲なら true。
 // (自分の高さより高い地形で視線は止まる。そのマス自身が高い場合も見えない=捕まらない)
-export function isCaught(level, x, y, jumps) {
-  const humans = level.humans;
-  if (!humans || !humans.length) return false;
+// 1人の人間 hu が jumps 時点で (x,y) を視認しているか
+function humanSeesCell(level, hu, x, y, jumps) {
   const h = level.heights;
-  for (const hu of humans) {
-    const [dx, dy] = humanFacingVec(hu, jumps);
-    // 向きの直線上にあるか(同じ行/列で、向いている側)
-    if (dx !== 0) {
-      if (y !== hu.y || Math.sign(x - hu.x) !== dx) continue;
-    } else {
-      if (x !== hu.x || Math.sign(y - hu.y) !== dy) continue;
-    }
-    const hh = h[hu.x][hu.y];
-    let cx = hu.x + dx;
-    let cy = hu.y + dy;
-    while (cx >= 0 && cy >= 0 && cx < GRID && cy < GRID) {
-      if (h[cx][cy] > hh) break; // 高い地形で視線が止まる
-      if (cx === x && cy === y) return true;
-      cx += dx;
-      cy += dy;
-    }
+  const [dx, dy] = humanFacingVec(hu, jumps);
+  if (dx !== 0) {
+    if (y !== hu.y || Math.sign(x - hu.x) !== dx) return false;
+  } else {
+    if (x !== hu.x || Math.sign(y - hu.y) !== dy) return false;
+  }
+  const hh = h[hu.x][hu.y];
+  let cx = hu.x + dx;
+  let cy = hu.y + dy;
+  while (cx >= 0 && cy >= 0 && cx < GRID && cy < GRID) {
+    if (h[cx][cy] > hh) return false; // 高い地形で視線が止まる
+    if (cx === x && cy === y) return true;
+    cx += dx;
+    cy += dy;
   }
   return false;
+}
+
+export function isCaught(level, x, y, jumps) {
+  return caughtBy(level, x, y, jumps) >= 0;
+}
+
+// (x,y) を捕まえる人間の index。いなければ -1。
+export function caughtBy(level, x, y, jumps) {
+  const humans = level.humans;
+  if (!humans || !humans.length) return -1;
+  for (let i = 0; i < humans.length; i++) {
+    if (humanSeesCell(level, humans[i], x, y, jumps)) return i;
+  }
+  return -1;
 }
 
 // いま(ジャンプ回数 jumps)の危険マス一覧(赤表示用)
@@ -469,7 +485,8 @@ function tryGenerate(rand, n, seed, stage, heights) {
         const ny2 = syp + o.dy;
         if (!inGrid(nx2, ny2) || heights[nx2][ny2] !== hc) stoppedAtWall = true;
       }
-      const corridorOk = stoppedAtWall && corridor.length >= 1;
+      // 2マス以上走って壁で止まる配置だけ採用(乗った瞬間に大破して効果が薄いのを防ぐ)
+      const corridorOk = stoppedAtWall && corridor.length >= 2;
       const corridorSet = new Set(corridor);
       // 停止セルSから、数字p(1〜3)で行ける次マスTの候補を集める(線路上は除外)
       const landOpts = [];
@@ -516,19 +533,37 @@ function tryGenerate(rand, n, seed, stage, heights) {
   }
   if (!goal) return null;
 
+  // 使われない段差(畑・線路のかたまりから離れた高マス)を平らにする。
+  // 占有セル(畑・トロッコ線路)とその周囲は残す=トロッコの停止壁や段差の斜面を壊さない。
+  // (平地ステージでは heights が全て0なので何も起きない)
+  {
+    const near = new Set();
+    const around = (x, y) => {
+      for (let ax = x - 1; ax <= x + 1; ax++)
+        for (let ay = y - 1; ay <= y + 1; ay++)
+          if (ax >= 0 && ay >= 0 && ax < GRID && ay < GRID) near.add(key(ax, ay));
+    };
+    for (const k of occ) around(Math.floor(k / 16), k % 16); // 占有セル(畑+線路)の周囲
+    around(goal.x, goal.y);
+    for (let x = 0; x < GRID; x++) {
+      for (let y = 0; y < GRID; y++) {
+        if (!near.has(key(x, y))) heights[x][y] = 0;
+      }
+    }
+  }
+
   const level = { seed, stage, tiles, goal, heights, count: tiles.length, humans: [] };
 
-  // 人間の配置: 空きマスに立たせ、初期向きでスタートを狙っておらず、
-  // かつ「捕まらずゴールできる安全ルート」が残る配置を探す。
+  // 人間の配置(捕獲は非致死=ニンジンを奪うだけなので解の検証は不要)。
+  // 畑のかたまりの近くに置き、初期向きで「畑が視線に入る」有効な向きにする(スタートは狙わない)。
   if (prof.allowHuman) {
     const want =
       prof.season === 'autumn'
-        ? tiles.length >= 16
+        ? tiles.length >= 12
           ? 2
           : 1
-        : (rand() < 0.5 ? 1 : 0) + (rand() < 0.2 ? 1 : 0);
+        : (rand() < 0.6 ? 1 : 0) + (rand() < 0.25 ? 1 : 0);
     if (want > 0) {
-      // 人間は畑のかたまりの近く(bboxを1マス広げた範囲)に置いて、画面内・危険が絡むようにする
       let minX = GRID, maxX = 0, minY = GRID, maxY = 0;
       for (const t of tiles) {
         minX = Math.min(minX, t.x); maxX = Math.max(maxX, t.x);
@@ -546,32 +581,43 @@ function tryGenerate(rand, n, seed, stage, heights) {
           empty.push({ x, y });
         }
       }
-      const startStance = stanceFromTile(level, 0);
-      const aliveAll = tiles.map((_, i) => i !== 0);
-      for (let attempt = 0; attempt < 24 && empty.length; attempt++) {
-        const used = new Set();
-        const hs = [];
-        for (let k = 0; k < want; k++) {
-          let cell = null;
-          for (let tries = 0; tries < 12; tries++) {
-            const c = empty[Math.floor(rand() * empty.length)];
-            if (!used.has(key(c.x, c.y))) {
-              cell = c;
-              break;
+      // (hx,hy)から向き(dx,dy)の視線に入る畑の数と、スタートを見てしまうか
+      const scan = (hx, hy, dx, dy) => {
+        const hh = heights[hx][hy];
+        let cx = hx + dx, cy = hy + dy, cov = 0, seesStart = false;
+        while (cx >= 0 && cy >= 0 && cx < GRID && cy < GRID) {
+          if (heights[cx][cy] > hh) break;
+          if (tiles.some((t) => t.x === cx && t.y === cy)) cov++;
+          if (cx === tiles[0].x && cy === tiles[0].y) seesStart = true;
+          cx += dx;
+          cy += dy;
+        }
+        return { cov, seesStart };
+      };
+      const used = new Set();
+      const hs = [];
+      for (let k = 0; k < want; k++) {
+        let best = null;
+        let bestCov = 0;
+        for (let tries = 0; tries < 40 && empty.length; tries++) {
+          const c = empty[Math.floor(rand() * empty.length)];
+          if (used.has(key(c.x, c.y))) continue;
+          for (let d = 0; d < 4; d++) {
+            const [dx, dy] = HUMAN_ROT[d];
+            const { cov, seesStart } = scan(c.x, c.y, dx, dy);
+            if (seesStart) continue; // 初期向きでスタートは狙わない
+            if (cov > bestCov) {
+              bestCov = cov;
+              best = { x: c.x, y: c.y, dir: d };
             }
           }
-          if (!cell) break;
-          used.add(key(cell.x, cell.y));
-          hs.push({ x: cell.x, y: cell.y, dir: Math.floor(rand() * 4) });
         }
-        if (!hs.length) continue;
-        level.humans = hs;
-        // 初期状態(0ジャンプ)でスタートが視線に入っていない
-        if (isCaught(level, tiles[0].x, tiles[0].y, 0)) continue;
-        // 捕まらずクリアできる手順が存在する
-        if (findSolution(level, aliveAll, startStance)) break;
-        level.humans = [];
+        if (best && bestCov >= 1) {
+          used.add(key(best.x, best.y));
+          hs.push(best);
+        }
       }
+      level.humans = hs;
     }
     if (prof.requireHuman && !level.humans.length) return null;
   }
@@ -581,13 +627,13 @@ function tryGenerate(rand, n, seed, stage, heights) {
 
 // ---------- 最短手数(スピードボーナス用のBFS) ----------
 export function computeMinMoves(level) {
+  // 人間の捕獲は非致死(ニンジンを奪うだけで手数は消費しない)ため、最短手数は人間を無視して計算する
   const n = level.tiles.length;
   const full = (1 << n) - 1;
   const start = stanceFromTile(level, 0);
-  const hasHumans = !!(level.humans && level.humans.length);
   const seen = new Set();
-  let frontier = [{ stance: start, mask: full & ~1, jumps: 0 }];
-  seen.add(start.id + '|' + (full & ~1) + '|0');
+  let frontier = [{ stance: start, mask: full & ~1 }];
+  seen.add(start.id + '|' + (full & ~1));
   for (let moves = 1; moves <= n + 1; moves++) {
     const next = [];
     for (const st of frontier) {
@@ -600,14 +646,12 @@ export function computeMinMoves(level) {
         const t = level.tiles[i];
         if (!canJumpXY(level, s.x, s.y, s.h, s.power, t.x, t.y)) continue;
         const { stance, eaten } = landStanceM(level, st.mask, s.x, s.y, i);
-        if (hasHumans && isCaught(level, stance.x, stance.y, st.jumps)) continue;
         let m2 = st.mask;
         for (const e of eaten) m2 &= ~(1 << e);
-        const nj = st.jumps + 1;
-        const k = stance.id + '|' + m2 + (hasHumans ? '|' + (nj & 3) : '');
+        const k = stance.id + '|' + m2;
         if (!seen.has(k)) {
           seen.add(k);
-          next.push({ stance, mask: m2, jumps: nj });
+          next.push({ stance, mask: m2 });
         }
       }
     }
@@ -634,20 +678,19 @@ export function reachableFrom(level, alive, stance) {
   return res;
 }
 
-// ---------- ソルバー(ヒント用) ----------
+// ---------- ソルバー(デバッグのオートクリア用) ----------
 // 1) ここから全マス回収してゴール(パーフェクト)がまだ可能ならその一手
 // 2) 不可能なら、とにかくゴールへ着けるルートの一手
-export function findSolution(level, alive, stance, jumps0 = 0) {
+// (人間の捕獲は非致死なので手順探索では無視する)
+export function findSolution(level, alive, stance) {
   const n = level.tiles.length;
   let mask = 0;
   for (let i = 0; i < n; i++) if (alive[i]) mask |= 1 << i;
 
-  const hasHumans = !!(level.humans && level.humans.length);
-
   const search = (needPerfect) => {
     const failed = new Set();
-    const dfs = (s, m, jumps) => {
-      const memoKey = s.id + '|' + m + (hasHumans ? '|' + (jumps & 3) : '');
+    const dfs = (s, m) => {
+      const memoKey = s.id + '|' + m;
       if (failed.has(memoKey)) return null;
       if (!needPerfect || m === 0) {
         if (canJumpXY(level, s.x, s.y, s.h, s.power, level.goal.x, level.goal.y)) {
@@ -659,17 +702,15 @@ export function findSolution(level, alive, stance, jumps0 = 0) {
         const t = level.tiles[i];
         if (!canJumpXY(level, s.x, s.y, s.h, s.power, t.x, t.y)) continue;
         const { stance: s2, eaten } = landStanceM(level, m, s.x, s.y, i);
-        // 人間の視線に降りる手は不可(捕まる)
-        if (hasHumans && isCaught(level, s2.x, s2.y, jumps)) continue;
         let nm = m;
         for (const e of eaten) nm &= ~(1 << e);
-        const rest = dfs(s2, nm, jumps + 1);
+        const rest = dfs(s2, nm);
         if (rest) return [i, ...rest];
       }
       failed.add(memoKey);
       return null;
     };
-    return dfs(stance, mask, jumps0);
+    return dfs(stance, mask);
   };
 
   return search(true) || search(false);

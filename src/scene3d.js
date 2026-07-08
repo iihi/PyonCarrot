@@ -72,9 +72,11 @@ export class GameScene {
     this.goalMesh = null;
     this.minis = []; // にぎやかしの極小ウサギ
     this.humans = []; // 見張りの人間
-    this.dangerMeshes = []; // 人間の視線(危険マス)の赤表示
-    this.reach = []; // 今飛べるマス(マス全体を明滅させて示す)
+    this.dangerMeshes = []; // 人間の視線(危険マス)の赤い地面
+    this.dangerTileIds = new Set(); // 危険マス上の畑(赤く塗る対象)
+    this.reachIds = []; // 今飛べるマス(明滅で示す)
     this.hintId = null; // ヒント対象(別色で明滅)
+    this._activeHi = new Set(); // 前フレームで発光中だったマス(戻し用)
     this.tweens = [];
     this.clock = new THREE.Clock();
     this.time = 0;
@@ -229,6 +231,20 @@ export class GameScene {
       this.humans.push({ group, data: hu, base });
     }
     this.setHumanFacing(0);
+
+    // ハイライト用に各マス・ゴールの元の発光を控えておく
+    const grabEmissive = (group) => {
+      const arr = [];
+      group.traverse((o) => {
+        if (!o.material) return;
+        const ms = Array.isArray(o.material) ? o.material : [o.material];
+        for (const m of ms) if (m.emissive) arr.push({ m, e: m.emissive.getHex(), i: m.emissiveIntensity });
+      });
+      return arr;
+    };
+    for (const tm of this.tileMeshes) tm.origMats = grabEmissive(tm.group);
+    this.goalOrigMats = grabEmissive(this.goalMesh);
+    this._activeHi = new Set();
 
     // ウサギは登場シーン(playEntrance)まで隠しておく
     // (スタートマスのニンジンは登場後にウサギが食べる)
@@ -533,41 +549,18 @@ export class GameScene {
     }
   }
 
-  // ---------- 到達マスの明滅表示 ----------
-  // 枠(リング)は段差や密集で隠れて見えなくなるので廃止。
-  // 代わりにマスのモデル全体を発光させて明滅させる(_frameで脈動)。
+  // ---------- ハイライト ----------
+  // マスの発光は _frame でまとめて設定する(役割の優先: 危険 > ヒント > ゴール > 移動)。
+  // 到達マス=明滅、危険マス(人間の視線)=赤く常時。id リストだけ持つ。
   clearRings() {
-    for (const r of this.reach) {
-      for (const mm of r.mats) {
-        mm.m.emissive.setHex(mm.e);
-        mm.m.emissiveIntensity = mm.i;
-      }
-    }
-    this.reach = [];
+    this.reachIds = [];
     this.hintId = null;
   }
 
   setReachable(list) {
-    this.clearRings();
-    for (const item of list) {
-      const group = item === 'goal' ? this.goalMesh : this.tileMeshes[item].group;
-      if (!group) continue;
-      // 発光を戻せるよう、各マテリアルの元の emissive を控えておく
-      const mats = [];
-      group.traverse((c) => {
-        if (!c.material) return;
-        const arr = Array.isArray(c.material) ? c.material : [c.material];
-        for (const m of arr) {
-          if (!m.emissive) continue;
-          mats.push({ m, e: m.emissive.getHex(), i: m.emissiveIntensity });
-        }
-      });
-      this.reach.push({ id: item, mats });
-    }
+    this.reachIds = list.slice();
   }
 
-  // ヒント: 対象マスだけ別色(ピンク)で強めに明滅させる。
-  // 時間では消えず、プレイヤーが移動する(setReachable/clearRings)まで続く。
   showHint(target) {
     this.hintId = target;
   }
@@ -603,7 +596,8 @@ export class GameScene {
     }
   }
 
-  // 危険マス(人間の視線)を地面に赤く表示する
+  // 危険マス(人間の視線): 地面を赤い半透明で表示し、そのマスの畑は _frame で赤く塗る。
+  // (点滅なし・半透明。depthTestありなので斜めで他マスににじまない)
   setDanger(cells) {
     for (const m of this.dangerMeshes) {
       this.world.remove(m);
@@ -611,62 +605,98 @@ export class GameScene {
       m.material.dispose();
     }
     this.dangerMeshes = [];
+    this.dangerTileIds = new Set();
+    const tileAtCell = new Map();
+    this.tileMeshes.forEach((tm, i) => {
+      if (tm.alive) tileAtCell.set(this.level.tiles[i].x + ',' + this.level.tiles[i].y, i);
+    });
     for (const c of cells) {
       const plane = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.96, 0.96),
+        new THREE.PlaneGeometry(0.98, 0.98),
         new THREE.MeshBasicMaterial({
-          color: 0xff1414,
+          color: 0xff2a2a,
           transparent: true,
-          opacity: 0.45,
+          opacity: 0.4,
           depthWrite: false,
-          depthTest: false, // 畑の土台の上にも重ねて、視線の帯が途切れず見えるように
         })
       );
       plane.rotation.x = -Math.PI / 2;
-      plane.position.copy(this.worldPos(c.x, c.y, this._cellY(c.x, c.y) + 0.06));
-      plane.renderOrder = 6;
+      plane.position.copy(this.worldPos(c.x, c.y, this._cellY(c.x, c.y) + 0.05));
       this.world.add(plane);
       this.dangerMeshes.push(plane);
+      const idx = tileAtCell.get(c.x + ',' + c.y);
+      if (idx != null) this.dangerTileIds.add(idx);
     }
   }
 
-  // 捕まる演出: 一番近い人間がウサギの手前まで走ってきて捕まえる
-  humanCatch(stance) {
+  // 捕獲(非致死): 人間がウサギの手前まで走ってくる。ゲーム側でニンジンを飛散→人間退場。
+  humanApproach(humanData) {
     return new Promise((resolve) => {
-      const target = this.worldPos(stance.x, stance.y, this._standY(stance.x, stance.y));
-      let best = null;
-      let bd = Infinity;
-      for (const h of this.humans) {
-        const p = h.group.position;
-        const d = Math.hypot(p.x - target.x, p.z - target.z);
-        if (d < bd) {
-          bd = d;
-          best = h;
-        }
-      }
-      this.killTweens('rabbit');
-      if (!best) {
+      const h = this.humans.find((e) => e.data === humanData) || this.humans[0];
+      if (!h) {
         resolve();
         return;
       }
-      const p0 = best.group.position.clone();
+      const target = this.rabbit.position.clone();
+      const p0 = h.group.position.clone();
       const p1 = new THREE.Vector3(
-        target.x + (p0.x - target.x) * 0.2,
+        target.x + (p0.x - target.x) * 0.28,
         p0.y,
-        target.z + (p0.z - target.z) * 0.2
+        target.z + (p0.z - target.z) * 0.28
       );
-      best.group.rotation.y = Math.atan2(target.x - p0.x, target.z - p0.z);
-      this.tween(0.42, 0, (t) => t, (k) => {
-        best.group.position.lerpVectors(p0, p1, k);
-        best.group.position.y = p0.y + Math.abs(Math.sin(k * Math.PI * 4)) * 0.14;
-      });
-      // ウサギはびっくりしてつかまる(回りながらしぼむ)
-      this.tween(0.34, 0.36, (t) => t, (k) => {
-        this.rabbit.rotation.y += 0.5;
-        this.rabbit.position.y = this._standY(stance.x, stance.y) + Math.sin(k * Math.PI) * 0.45;
-        this.rabbit.scale.setScalar(1 - 0.55 * k);
-      }, () => resolve(), 'rabbit');
+      h.group.rotation.y = Math.atan2(target.x - p0.x, target.z - p0.z);
+      const tag = 'human' + humanData.x + '_' + humanData.y;
+      this.killTweens(tag);
+      this.tween(0.4, 0, (t) => t, (k) => {
+        h.group.position.lerpVectors(p0, p1, k);
+        h.group.position.y = p0.y + Math.abs(Math.sin(k * Math.PI * 4)) * 0.14; // 走る上下動
+      }, () => resolve(), tag);
     });
+  }
+
+  // ソニックのリングのようにニンジンが飛び散る
+  scatterCarrots(stance, count) {
+    const p = this.worldPos(stance.x, stance.y, this._standY(stance.x, stance.y) + 0.4);
+    const n = Math.max(6, Math.min(count, 16));
+    for (let i = 0; i < n; i++) {
+      const m = new THREE.Mesh(
+        new THREE.ConeGeometry(0.08, 0.26, 6),
+        new THREE.MeshStandardMaterial({ color: 0xff7a1c, flatShading: true })
+      );
+      m.position.copy(p);
+      this.scene.add(m);
+      this._fx.add(m);
+      const ang = (i / n) * Math.PI * 2 + Math.random() * 0.4;
+      const sp = 1.4 + Math.random() * 1.3;
+      const vx = Math.cos(ang) * sp;
+      const vz = Math.sin(ang) * sp;
+      const vy = 2.4 + Math.random() * 1.6;
+      const rx = (Math.random() - 0.5) * 0.9;
+      this.tween(0.7 + Math.random() * 0.25, 0, (t) => t, (k) => {
+        m.position.set(p.x + vx * k, p.y + vy * k - 4.6 * k * k, p.z + vz * k);
+        m.rotation.x += rx;
+        m.rotation.z += 0.2;
+        m.material.opacity = 1 - k;
+        m.material.transparent = true;
+      }, () => this._removeFx(m));
+    }
+  }
+
+  // 人間を1体退場させる(捕獲後)
+  removeHuman(humanData) {
+    const i = this.humans.findIndex((e) => e.data === humanData);
+    if (i < 0) return;
+    const h = this.humans[i];
+    const g = h.group;
+    this.killTweens('human' + humanData.x + '_' + humanData.y);
+    const y0 = g.position.y;
+    this.tween(0.4, 0, easeOut, (k) => {
+      g.position.y = y0 - 1.4 * k;
+      g.scale.setScalar(Math.max(0.01, 1 - k));
+    }, () => {
+      this.world.remove(g);
+    });
+    this.humans.splice(i, 1);
   }
 
   setNumbersVisible(v) {
@@ -1064,30 +1094,36 @@ export class GameScene {
       }
     }
 
-    // 到達マスはモデル全体を明滅（発光）させる。ヒント対象はピンクで強めに。
+    // マスの発光を役割ごとにまとめて設定(優先: 危険 > ヒント > ゴール > 移動)。
+    // 到達=明滅、危険=赤く常時(点滅なし)。役割が外れたマスは元の発光へ戻す。
     const pulse = 0.5 + 0.5 * Math.sin(this.time * 5);
     const hintPulse = 0.5 + 0.5 * Math.sin(this.time * 8);
-    for (const r of this.reach) {
-      const isHint = this.hintId != null && r.id === this.hintId;
-      const isGoal = r.id === 'goal';
-      const col = isHint ? 0xff2f8e : isGoal ? 0xffcf22 : 0xfff04a;
-      // ゴールは他のマスより強めに光らせて選択肢だと分かりやすくする
-      const inten = isHint
-        ? 0.2 + 0.42 * hintPulse
-        : isGoal
-        ? 0.4 + 0.6 * pulse
-        : 0.05 + 0.26 * pulse;
-      for (const mm of r.mats) {
-        mm.m.emissive.setHex(col);
-        mm.m.emissiveIntensity = inten;
+    const active = new Map();
+    for (const id of this.reachIds) {
+      if (id === 'goal') active.set('goal', { col: 0xffcf22, inten: 0.4 + 0.6 * pulse });
+      else active.set(id, { col: 0xfff04a, inten: 0.05 + 0.26 * pulse });
+    }
+    if (this.hintId != null) active.set(this.hintId, { col: 0xff2f8e, inten: 0.2 + 0.42 * hintPulse });
+    for (const idx of this.dangerTileIds) active.set(idx, { col: 0xff2a2a, inten: 0.5 }); // 危険は最優先・常時
+    const matsOf = (id) => (id === 'goal' ? this.goalOrigMats : this.tileMeshes[id] && this.tileMeshes[id].origMats);
+    for (const [id, role] of active) {
+      const mats = matsOf(id);
+      if (!mats) continue;
+      for (const mm of mats) {
+        mm.m.emissive.setHex(role.col);
+        mm.m.emissiveIntensity = role.inten;
       }
     }
-
-    // 人間の危険マス(赤)を明滅させる
-    if (this.dangerMeshes.length) {
-      const dp = 0.38 + 0.16 * Math.sin(this.time * 6);
-      for (const m of this.dangerMeshes) m.material.opacity = dp;
+    for (const id of this._activeHi) {
+      if (active.has(id)) continue;
+      const mats = matsOf(id);
+      if (!mats) continue;
+      for (const mm of mats) {
+        mm.m.emissive.setHex(mm.e);
+        mm.m.emissiveIntensity = mm.i;
+      }
     }
+    this._activeHi = new Set(active.keys());
 
     // ゴールのピンクウサギの待機モーション
     if (this.goalMesh && !this.goalCollected) {

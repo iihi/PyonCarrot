@@ -9,7 +9,7 @@ import {
   parseCode,
   GOLD_MULT,
   seasonForStage,
-  isCaught,
+  caughtBy,
   humanDangerCells,
 } from './level.js';
 import { GameScene } from './scene3d.js';
@@ -17,11 +17,8 @@ import { Sfx } from './sfx.js';
 
 const SAVE_KEY = 'pyoncarrot_save_v1';
 
-// ---------- ニンジン経済・スコアの定数（調整はここ） ----------
-const COST_REWIND = 3; // まきもどしのニンジン消費
-const COST_HINT = 5; // ヒントのニンジン消費
+// ---------- スコアの定数（調整はここ） ----------
 const SCORE_PER_CARROT = 10; // 残ニンジン1本あたりのスコア
-const NO_HINT_BONUS = 100; // ヒント未使用クリアのボーナス
 const PERFECT_BONUS = 300; // 全マス回収クリア(じっくり派)
 const SPEED_BONUS = 300; // 最短手数+1以内クリア(駆け抜け派)
 const retryMult = (r) => (r === 0 ? 1.5 : r >= 3 ? 0.5 : 1.0); // リトライ倍率
@@ -50,7 +47,6 @@ export class Game {
     this.hiscore = 0;
     this.carrots = 0; // このステージで食べたニンジン(持ち越しなし)
     this.retryCount = 0; // このステージのリトライ回数(倍率用)
-    this.history = [];
 
     this.scene.onTileTap = (id) => this.tryMove(id);
     this._bindUI();
@@ -135,7 +131,7 @@ export class Game {
     if (!this._debug || this.state !== 'playing') return;
     let guard = 0;
     while (this.state === 'playing' && guard++ < 60) {
-      const path = findSolution(this.level, this.alive, this.stance, this.jumps);
+      const path = findSolution(this.level, this.alive, this.stance);
       if (!path || !path.length) break;
       const step = path[0];
       if (!this.reachable.includes(step)) break;
@@ -241,11 +237,6 @@ export class Game {
       this._hide('modal-over');
       this.retryStage();
     };
-    $('btn-rewind-over').onclick = () => {
-      this._hide('modal-over');
-      this.state = 'playing';
-      this.useRewind();
-    };
     $('btn-title-over').onclick = () => {
       this.sfx.click();
       this._hide('modal-over');
@@ -259,8 +250,6 @@ export class Game {
     };
 
     // HUDボタン
-    $('btn-rewind').onclick = () => this.useRewind();
-    $('btn-hint').onclick = () => this.useHint();
     $('btn-retry').onclick = () => {
       this.sfx.click();
       this.retryStage();
@@ -317,10 +306,6 @@ export class Game {
       this._moveByScreenDir(dirMap[e.key]);
     } else if (e.key === 'r' || e.key === 'R') {
       this.retryStage();
-    } else if (e.key === 'z' || e.key === 'Z' || e.key === 'u' || e.key === 'U') {
-      this.useRewind();
-    } else if (e.key === 'h' || e.key === 'H') {
-      this.useHint();
     } else if (e.key === 'm' || e.key === 'M') {
       $('btn-sound').click();
     }
@@ -471,9 +456,8 @@ export class Game {
     this.curIdx = 0; // 立っているマス(空きマスなら -1)
     this.stance = stanceFromTile(this.level, 0);
     this.carrots = 0; // ニンジンは持ち越さない
-    this.hintsUsed = 0;
     this.jumps = 0; // これまでのジャンプ回数(人間の向きの計算に使う)
-    this.history = [];
+    this.moves = 0; // これまでの手数(スピードボーナス用)
 
     this._hide('screen-title');
     this._show('hud');
@@ -515,10 +499,10 @@ export class Game {
     });
   }
 
-  // 季節の説明画面を出すべきステージなら季節キーを返す(春/夏/秋/冬の頭 と 41面=全部入り)
+  // 季節の説明画面を出すべきステージなら季節キーを返す(春/夏/秋/冬の頭 と 21面=全部入り)
   _seasonIntroKey(stage) {
-    if (stage === 41) return 'allin';
-    if (stage <= 40 && (stage - 1) % 10 === 0) return seasonForStage(stage);
+    if (stage === 21) return 'allin';
+    if (stage <= 20 && (stage - 1) % 5 === 0) return seasonForStage(stage);
     return null;
   }
 
@@ -661,11 +645,6 @@ export class Game {
     $('hud-stage').textContent = this.stage;
     $('hud-score').textContent = fmt(this.score);
     $('hud-count').textContent = this.carrots;
-    $('btn-rewind').classList.toggle(
-      'disabled',
-      this.carrots < COST_REWIND || !this.history.length
-    );
-    $('btn-hint').classList.toggle('disabled', this.carrots < COST_HINT);
   }
 
   _updateReachable() {
@@ -688,10 +667,6 @@ export class Game {
       this.sfx.gameover();
       $('over-msg').textContent = 'これ以上すすめません…';
       $('over-score').textContent = fmt(this.score);
-      $('btn-rewind-over').classList.toggle(
-        'hidden',
-        !(this.carrots >= COST_REWIND && this.history.length > 0)
-      );
       setTimeout(() => this._show('modal-over'), 700);
     }
   }
@@ -709,23 +684,17 @@ export class Game {
     const fromStance = this.stance;
     const fromIdx = this.curIdx; // 立っていたマス(空きマスなら -1)
     const onSpring = fromIdx >= 0 && this.level.tiles[fromIdx].spring;
-    // 着地の解決(トロッコは乗った進行方向へ走る)。undo用に消えるマスと直前スタンスを記録
     const landInfo =
       id === 'goal'
         ? null
         : landStance(this.level, this.alive, fromStance.x, fromStance.y, id);
-    this.history.push({
-      stance: fromStance,
-      curIdx: fromIdx,
-      eaten: landInfo ? landInfo.eaten.slice() : [],
-      jumps: this.jumps,
-    });
 
     this.sfx[onSpring ? 'boing' : 'hop']();
 
     // 元いたマスを沈める(空きマスからのジャンプなら沈めるマスなし)
     await this.scene.jumpTo(fromStance, id, fromIdx);
     this.sfx.land();
+    this.moves++;
 
     if (id === 'goal') {
       this._onClear();
@@ -745,32 +714,27 @@ export class Game {
     this.stance = landInfo.stance;
     this.curIdx = tile.cart ? -1 : id;
 
-    // 人間に見られている向きの直線上に降りたら捕まる(現在の向き=this.jumpsで判定)
-    if (isCaught(this.level, this.stance.x, this.stance.y, this.jumps)) {
-      this.jumps++;
-      await this.scene.humanCatch(this.stance);
-      this._gameOverCaught();
-      return;
+    // 人間に見られている向きの直線上に降りたら、寄ってきてニンジンを全部奪われる(非致死)
+    const caught = caughtBy(this.level, this.stance.x, this.stance.y, this.jumps);
+    this.jumps++; // ジャンプしたので人間は回る
+    if (caught >= 0) {
+      const human = this.level.humans[caught];
+      await this.scene.humanApproach(human);
+      const lost = this.carrots;
+      this.sfx.thud();
+      if (lost > 0) this.scene.scatterCarrots(this.stance, lost);
+      this.carrots = 0;
+      this.scene.removeHuman(human); // 奪ったら人間は退場
+      this.level.humans.splice(caught, 1);
+      this._caughtCount = (this._caughtCount || 0) + 1;
+      this._updateHUD();
     }
-    this.jumps++; // 安全に着地 → 人間が90°回る
 
     this.scene.setOnSpring(this.curIdx >= 0 && this.level.tiles[this.curIdx].spring);
 
     this.state = 'playing';
     this._updateHUD();
     this._updateReachable();
-  }
-
-  _gameOverCaught() {
-    this.state = 'over';
-    this.sfx.gameover();
-    $('over-msg').textContent = '人間につかまっちゃった…';
-    $('over-score').textContent = fmt(this.score);
-    $('btn-rewind-over').classList.toggle(
-      'hidden',
-      !(this.carrots >= COST_REWIND && this.history.length > 0)
-    );
-    setTimeout(() => this._show('modal-over'), 900);
   }
 
   // 一度だけ出す説明トースト
@@ -787,14 +751,12 @@ export class Game {
     this.scene.celebrate();
     this.sfx.clear();
 
-    // スコア計算: (残ニンジン×10 + 各種ボーナス) × リトライ倍率
+    // スコア計算: (残ニンジン×10 + パーフェクト + スピード) × リトライ倍率
     const carrotBonus = this.carrots * SCORE_PER_CARROT;
     const perfect = this.level.tiles.every((t) => t.eaten) ? PERFECT_BONUS : 0;
-    const movesUsed = this.history.length;
-    const speed = movesUsed <= this.level.minMoves + 1 ? SPEED_BONUS : 0;
-    const noHint = this.hintsUsed === 0 ? NO_HINT_BONUS : 0;
+    const speed = this.moves <= this.level.minMoves + 1 ? SPEED_BONUS : 0;
     const mult = retryMult(this.retryCount);
-    const gain = Math.round((carrotBonus + perfect + speed + noHint) * mult);
+    const gain = Math.round((carrotBonus + perfect + speed) * mult);
     this.score += gain;
     this._lastGain = gain; // クリアDLGの「もういちど」で取り消せるように覚えておく
     // ハイスコアの確定は「つぎのステージへ」を押した時点(やり直しで巻き戻せるため)
@@ -806,7 +768,7 @@ export class Game {
     setTimeout(() => {
       if (this.state !== 'clear') return;
       this._show('modal-clear');
-      this._playClearSequence({ carrotBonus, perfect, speed, noHint, mult, gain });
+      this._playClearSequence({ carrotBonus, perfect, speed, mult, gain });
     }, 1500);
   }
 
@@ -820,7 +782,6 @@ export class Game {
       carrots: $('sb-carrots-row'),
       perfect: $('sb-perfect-row'),
       speed: $('sb-speed-row'),
-      nohint: $('sb-nohint-row'),
       mult: $('sb-mult-row'),
       total: $('sb-total-row'),
       cum: $('sb-cum-row'),
@@ -828,7 +789,6 @@ export class Game {
     // 出ない行は非表示、出る行は「待機」状態に
     rows.perfect.classList.toggle('hidden', !d.perfect);
     rows.speed.classList.toggle('hidden', !d.speed);
-    rows.nohint.classList.toggle('hidden', !d.noHint);
     rows.mult.classList.toggle('hidden', d.mult === 1);
     for (const r of Object.values(rows)) {
       r.classList.remove('sb-pop');
@@ -840,7 +800,6 @@ export class Game {
     $('sb-carrots').textContent = '+0';
     $('sb-perfect').textContent = `+${fmt(PERFECT_BONUS)}`;
     $('sb-speed').textContent = `+${fmt(SPEED_BONUS)}`;
-    $('sb-nohint').textContent = `+${fmt(NO_HINT_BONUS)}`;
     if (d.mult !== 1) {
       $('sb-mult-label').textContent =
         d.mult > 1 ? 'ノーリトライボーナス' : `リトライ${this.retryCount}回`;
@@ -867,10 +826,6 @@ export class Game {
     }
     if (d.speed) {
       later(t, () => pop(rows.speed));
-      t += 380;
-    }
-    if (d.noHint) {
-      later(t, () => pop(rows.nohint));
       t += 380;
     }
     if (d.mult !== 1) {
@@ -983,62 +938,6 @@ export class Game {
       };
       requestAnimationFrame(fly);
     }
-  }
-
-  // ---------- アイテム（ニンジン消費） ----------
-  async useRewind() {
-    if (this.state !== 'playing') return;
-    if (!this.history.length) {
-      this._toast('もどれる手がありません');
-      return;
-    }
-    if (this.carrots < COST_REWIND) {
-      this._toast(`ニンジンが足りません（まきもどしは${COST_REWIND}本）`);
-      return;
-    }
-    this.state = 'busy';
-    this.carrots -= COST_REWIND;
-    this.sfx.rewind();
-    this.scene.clearRings();
-    this.scene.clearHint();
-
-    const prev = this.history.pop();
-    // この手で消えたマスをフィールドに戻す(ニンジンは食べたあとなので戻らない)
-    for (const idx of prev.eaten) {
-      this.alive[idx] = true;
-      this.scene.restoreTile(idx);
-    }
-    // 戻り先がマスならその沈んだメッシュも戻す(空きマスなら不要)
-    if (prev.curIdx >= 0) this.scene.restoreTile(prev.curIdx);
-    await this.scene.rewindHop(prev.stance);
-
-    this.stance = prev.stance;
-    this.curIdx = prev.curIdx;
-    this.jumps = prev.jumps || 0; // 人間の向きも巻き戻す
-    this.scene.setOnSpring(
-      this.curIdx >= 0 && this.level.tiles[this.curIdx].spring
-    );
-    this.state = 'playing';
-    this._updateHUD();
-    this._updateReachable();
-  }
-
-  useHint() {
-    if (this.state !== 'playing') return;
-    if (this.carrots < COST_HINT) {
-      this._toast(`ニンジンが足りません（ヒントは${COST_HINT}本）`);
-      return;
-    }
-    const path = findSolution(this.level, this.alive, this.stance, this.jumps);
-    if (!path) {
-      this._toast('この状態ではクリアできません。まきもどしを使おう！');
-      return;
-    }
-    this.carrots -= COST_HINT;
-    this.hintsUsed++;
-    this.sfx.hint();
-    this.scene.showHint(path[0]);
-    this._updateHUD();
   }
 
   // ---------- セーブ ----------
