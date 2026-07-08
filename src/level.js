@@ -359,6 +359,9 @@ function tryGenerate(rand, n, seed, stage, heights) {
           const tx = sxp + dx * d;
           const ty = syp + dy * d;
           if (!inGrid(tx, ty)) continue;
+          // トロッコ自身のセル(cx,cy)はこの時点でまだocc/tilesに入っていないので明示的に除外
+          // (大破後は空きマスになるため、そこへ着地するマスは置けない)
+          if (tx === cx && ty === cy) continue;
           if (occ.has(key(tx, ty)) || corridorSet.has(key(tx, ty)) || hasTile(tx, ty)) continue;
           const p = d + heights[tx][ty] - hc;
           if (p < 1 || p > 3) continue;
