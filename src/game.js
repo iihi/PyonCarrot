@@ -3,8 +3,11 @@ import {
   generate,
   reachableFrom,
   findSolution,
+  landStance,
+  stanceFromTile,
   makeCode,
   parseCode,
+  GOLD_MULT,
 } from './level.js';
 import { GameScene } from './scene3d.js';
 import { Sfx } from './sfx.js';
@@ -16,6 +19,8 @@ const COST_REWIND = 3; // まきもどしのニンジン消費
 const COST_HINT = 5; // ヒントのニンジン消費
 const SCORE_PER_CARROT = 10; // 残ニンジン1本あたりのスコア
 const NO_HINT_BONUS = 100; // ヒント未使用クリアのボーナス
+const PERFECT_BONUS = 300; // 全マス回収クリア(じっくり派)
+const SPEED_BONUS = 300; // 最短手数+1以内クリア(駆け抜け派)
 const retryMult = (r) => (r === 0 ? 1.5 : r >= 3 ? 0.5 : 1.0); // リトライ倍率
 
 const $ = (id) => document.getElementById(id);
@@ -37,6 +42,7 @@ export class Game {
 
     this.scene.onTileTap = (id) => this.tryMove(id);
     this._bindUI();
+    this._bindDebug();
     this._loadSettings();
     this._showTitle();
 
@@ -46,6 +52,84 @@ export class Game {
       () => this.sfx.unlock(),
       { once: true }
     );
+  }
+
+  // ---------- デバッグモード ----------
+  // 本番では非表示。有効化は URL に #debug を付けるか、Dキーを3回連打。
+  _bindDebug() {
+    const panel = $('debug-panel');
+    const enable = () => {
+      this._debug = true;
+      panel.classList.remove('hidden');
+      this._dbgUpdate();
+    };
+    if (location.hash.toLowerCase().includes('debug')) enable();
+
+    // Dキー3連打(1.2秒以内)で有効化
+    let taps = [];
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'd' || e.key === 'D') {
+        const now = performance.now();
+        taps = taps.filter((t) => now - t < 1200);
+        taps.push(now);
+        if (taps.length >= 3 && !this._debug) enable();
+      }
+    });
+
+    const jump = (stage) => {
+      if (!this._debug) return;
+      this.stage = Math.max(1, Math.min(999, stage));
+      if (!this.seed) this.seed = 1000 + Math.floor(Math.random() * 9000);
+      this.score = 0;
+      this.retryCount = 0;
+      this._hide('modal-clear');
+      this._hide('modal-over');
+      this._cancelClearSeq();
+      this.startStage();
+      this._dbgUpdate();
+    };
+
+    $('dbg-close').onclick = () => panel.classList.add('hidden');
+    $('dbg-go').onclick = () => {
+      const v = parseInt($('dbg-stage').value, 10);
+      if (v >= 1) jump(v);
+    };
+    $('dbg-prev').onclick = () => jump(this.stage - 1);
+    $('dbg-next').onclick = () => jump(this.stage + 1);
+    $('dbg-skip10').onclick = () => jump(this.stage + 10);
+    $('dbg-seed-go').onclick = () => {
+      const v = parseInt($('dbg-seed').value, 10);
+      if (v >= 1000 && v <= 9999) {
+        this.seed = v;
+        jump(this.stage);
+      }
+    };
+    $('dbg-solve').onclick = () => this._dbgAutoSolve();
+  }
+
+  _dbgUpdate() {
+    if (!this._debug) return;
+    const info = $('dbg-info');
+    if (this.level) {
+      info.textContent = `seed ${this.seed} / stage ${this.stage} / code ${makeCode(
+        this.seed,
+        this.stage
+      )} / minMoves ${this.level.minMoves}`;
+    }
+  }
+
+  // ヒント用ソルバーの経路をそのまま自動再生してクリアする
+  async _dbgAutoSolve() {
+    if (!this._debug || this.state !== 'playing') return;
+    let guard = 0;
+    while (this.state === 'playing' && guard++ < 60) {
+      const path = findSolution(this.level, this.alive, this.stance);
+      if (!path || !path.length) break;
+      const step = path[0];
+      if (!this.reachable.includes(step)) break;
+      await this.tryMove(step);
+      await new Promise((r) => setTimeout(r, 120));
+    }
   }
 
   // ---------- UI ----------
@@ -89,6 +173,11 @@ export class Game {
         this.seed = save.seed;
         this.stage = save.stage;
         this.score = save.score || 0;
+        // クリア後に閉じた場合などセーブ済みスコアがハイスコア未反映のことがある
+        if (this.score > this.hiscore) {
+          this.hiscore = this.score;
+          this._saveSettings();
+        }
         this.retryCount = 0;
         this._hide('modal-continue');
         this.startStage();
@@ -101,10 +190,33 @@ export class Game {
     $('btn-next').onclick = () => {
       this.sfx.click();
       this._cancelClearSeq();
+      // このステージの結果を確定(ハイスコア更新)
+      if (this.score > this.hiscore) {
+        this.hiscore = this.score;
+        this._saveSettings();
+      }
+      this._lastGain = 0;
       this.stage++;
       this.retryCount = 0;
       this._hide('modal-clear');
       this.startStage();
+    };
+    // クリア後の「もういちど」: 得たスコアを取り消して同じステージを仕切り直し(ペナルティなし)
+    $('btn-clear-retry').onclick = () => {
+      this.sfx.click();
+      this._cancelClearSeq();
+      this.score -= this._lastGain || 0;
+      this._lastGain = 0;
+      this.retryCount = 0;
+      this._hide('modal-clear');
+      this._save(); // 進行セーブも現ステージに巻き戻す
+      this.startStage();
+    };
+    // クリア後のコード共有(難しかったステージの共有用): 下部と同じコードDLGを出す
+    $('btn-clear-copy').onclick = () => {
+      this.sfx.click();
+      $('share-code').textContent = makeCode(this.seed, this.stage);
+      this._show('modal-share');
     };
     // 演出中にダイアログをタップしたら最後まで一気に表示
     $('modal-clear').addEventListener('click', (e) => {
@@ -136,7 +248,7 @@ export class Game {
       this.retryStage();
     };
     $('btn-sound').onclick = () => {
-      this.sfx.enabled = !this.sfx.enabled;
+      this.sfx.setEnabled(!this.sfx.enabled);
       $('btn-sound').classList.toggle('on', this.sfx.enabled);
       $('btn-sound').textContent = this.sfx.enabled ? '♪' : '×';
       this.sfx.click();
@@ -152,6 +264,11 @@ export class Game {
     };
 
     window.addEventListener('keydown', (e) => this._key(e));
+
+    // チュートリアル吹き出しは画面のどこかをタップしても消える(うさぎを動かさなくてOK)
+    window.addEventListener('pointerdown', () => {
+      if (this._tutShown) this._hideTutorial(true);
+    });
   }
 
   _key(e) {
@@ -230,7 +347,12 @@ export class Game {
 
   _showTitle() {
     this.state = 'title';
+    this.sfx.stopBgm(); // タイトルに戻ったらBGMは止める
     this._hideTutorial(false);
+    this._cancelClearSeq();
+    for (const id of ['modal-help', 'modal-continue', 'modal-clear', 'modal-over', 'modal-share']) {
+      this._hide(id);
+    }
     this._show('screen-title');
     this._hide('hud');
     const hi = $('title-hiscore');
@@ -259,7 +381,7 @@ export class Game {
   _continueFromCode() {
     const parsed = parseCode($('code-input').value);
     if (!parsed) {
-      this._toast('コードの形式が違います（例: 1234-5）');
+      this._toast('コードが正しくありません（例: MWD-H4F）');
       return;
     }
     this.sfx.click();
@@ -323,9 +445,11 @@ export class Game {
   }
 
   startStage() {
+    this.sfx.startBgm(); // ゲーム中はBGMをループ再生(ボタン操作直後なので自動再生OK)
     this.level = generate(this.seed, this.stage);
     this.alive = this.level.tiles.map((_, i) => i !== 0);
-    this.cur = 0;
+    this.curIdx = 0; // 立っているマス(空きマスなら -1)
+    this.stance = stanceFromTile(this.level, 0);
     this.carrots = 0; // ニンジンは持ち越さない
     this.hintsUsed = 0;
     this.history = [];
@@ -338,6 +462,7 @@ export class Game {
     this.scene.setGridVisible(true);
     this._save();
     this._updateHUD();
+    this._dbgUpdate();
 
     this._hideTutorial(false);
 
@@ -347,10 +472,13 @@ export class Game {
     this.scene.playEntrance().then(() => {
       // 登場したらスタートマスのニンジンをまず1口
       this._eatTile(0);
+      this.curIdx = 0;
+      this.stance = stanceFromTile(this.level, 0);
+      this.scene.setOnSpring(!!this.level.tiles[0].spring);
       this.state = 'playing';
       this._updateHUD();
       this._updateReachable();
-      this._maybeShowHeightTutorial();
+      this._maybeShowGimmickTutorial();
     });
   }
 
@@ -365,9 +493,13 @@ export class Game {
     const tile = this.level.tiles[idx];
     if (tile.eaten) return;
     tile.eaten = true;
-    this.carrots += tile.value;
+    const gain = tile.golden ? tile.value * GOLD_MULT : tile.value;
+    this.carrots += gain;
     this.scene.eatCarrots(idx);
-    this._carrotPop(tile.x, tile.y, tile.value);
+    this._carrotPop(tile.x, tile.y, gain);
+    if (tile.golden) {
+      this._toastOnce('_tut_gold', `大ニンジン！✨ 1本で${GOLD_MULT}本分！`);
+    }
   }
 
   // 「+N🥕」のポップ表示
@@ -382,59 +514,82 @@ export class Game {
     setTimeout(() => el.remove(), 1000);
   }
 
-  // ---------- 段差の初回チュートリアル ----------
-  // 段差のあるステージを初めて遊ぶとき、一番高いマスに吹き出しを出す。
-  // ウサギを動かしたら消えて、以降は表示しない。
-  _maybeShowHeightTutorial() {
-    try {
-      if (localStorage.getItem(SAVE_KEY + '_tut_h')) return;
-    } catch (e) {}
-    // 段差のあるマス全てを候補にする
-    const cands = this.level.tiles.filter(
-      (t) => this.level.heights[t.x][t.y] > 0
-    );
-    if (!cands.length) return; // 段差のないステージ
+  // ---------- ギミックの初回チュートリアル吹き出し ----------
+  // 段差・ジャンプ台・トロッコが初めて登場するステージで、該当マスに吹き出しを出す。
+  // ウサギを動かしたら消えて、以降は表示しない。1ステージにつき1件（優先順）。
+  _maybeShowGimmickTutorial() {
+    const TUTS = [
+      {
+        flag: '_tut_h',
+        pick: (t) => this.level.heights[t.x][t.y] > 0,
+        prefer: (t) => this.level.heights[t.x][t.y] * 20,
+        html: '⛰️ 高いところへ上るには<br />パワーが<b>1つ多く</b>ひつよう！<br />降りるときは<b>1つ遠くへ</b>飛べるよ',
+      },
+      {
+        flag: '_tut_spring',
+        pick: (t) => !!t.spring,
+        prefer: () => 0,
+        html: '🦘 <b>ジャンプ台</b>のマス！<br />ここから飛ぶと<b>2マス遠くまで</b>とべるよ',
+      },
+      {
+        flag: '_tut_cart',
+        pick: (t) => !!t.cart,
+        prefer: () => 0,
+        html: '🛒 <b>トロッコ</b>のマス！乗ると<b>進んだ方向</b>へ<br />走って、かべ(段差や畑)の手前で止まるよ。<br />止まった所から<b>数字ぶん</b>ジャンプ！',
+      },
+    ];
 
-    const cw = this.scene.canvas.clientWidth;
-    // 避けたい場所: プレイヤーうさぎ・次に飛べるマス
-    const cur = this.level.tiles[this.cur];
-    const avoid = [this.scene.projectToScreen(cur.x, cur.y, 0.6)];
-    for (const id of this.reachable || []) {
-      const t = id === 'goal' ? this.level.goal : this.level.tiles[id];
-      avoid.push(this.scene.projectToScreen(t.x, t.y, 0.4));
-    }
+    for (const tut of TUTS) {
+      try {
+        if (localStorage.getItem(SAVE_KEY + tut.flag)) continue;
+      } catch (e) {}
+      const cands = this.level.tiles.filter(tut.pick);
+      if (!cands.length) continue;
 
-    // 吹き出し(幅約240px・高さ約90px)の中心が避けたい点から遠い候補を選ぶ
-    let best = null;
-    for (const t of cands) {
-      const p = this.scene.projectToScreen(t.x, t.y, 1.5);
-      const bx = Math.min(Math.max(p.x, 132), cw - 132); // 画面内に収める
-      const by = p.y - 52;
-      let pen = 0;
-      if (p.y - 110 < 0) pen += 500; // 画面上にはみ出す
-      for (const a of avoid) {
-        pen += Math.max(0, 175 - Math.hypot(a.x - bx, a.y - by)) * 3;
+      const cw = this.scene.canvas.clientWidth;
+      // 避けたい場所: プレイヤーうさぎ・次に飛べるマス
+      const avoid = [this.scene.projectToScreen(this.stance.x, this.stance.y, 0.6)];
+      for (const id of this.reachable || []) {
+        const t = id === 'goal' ? this.level.goal : this.level.tiles[id];
+        avoid.push(this.scene.projectToScreen(t.x, t.y, 0.4));
       }
-      pen -= this.level.heights[t.x][t.y] * 20; // 同条件なら高いマス優先
-      if (!best || pen < best.pen) best = { pen, x: bx, y: p.y };
-    }
 
-    const el = $('tut-balloon');
-    el.style.left = `${best.x}px`;
-    el.style.top = `${best.y}px`;
-    el.classList.remove('hidden');
-    this._tutShown = true;
+      // 吹き出し(幅約240px・高さ約90px)の中心が避けたい点から遠い候補を選ぶ
+      let best = null;
+      for (const t of cands) {
+        const p = this.scene.projectToScreen(t.x, t.y, 1.5);
+        const bx = Math.min(Math.max(p.x, 132), cw - 132); // 画面内に収める
+        const by = p.y - 52;
+        let pen = 0;
+        if (p.y - 110 < 0) pen += 500; // 画面上にはみ出す
+        for (const a of avoid) {
+          pen += Math.max(0, 175 - Math.hypot(a.x - bx, a.y - by)) * 3;
+        }
+        pen -= tut.prefer(t);
+        if (!best || pen < best.pen) best = { pen, x: bx, y: p.y };
+      }
+
+      const el = $('tut-balloon');
+      el.innerHTML = tut.html;
+      el.style.left = `${best.x}px`;
+      el.style.top = `${best.y}px`;
+      el.classList.remove('hidden');
+      this._tutShown = true;
+      this._tutFlag = tut.flag;
+      return; // 1ステージ1件まで
+    }
   }
 
   _hideTutorial(learned) {
     if (!this._tutShown) return;
     $('tut-balloon').classList.add('hidden');
     this._tutShown = false;
-    if (learned) {
+    if (learned && this._tutFlag) {
       try {
-        localStorage.setItem(SAVE_KEY + '_tut_h', '1');
+        localStorage.setItem(SAVE_KEY + this._tutFlag, '1');
       } catch (e) {}
     }
+    this._tutFlag = null;
   }
 
   // ---------- HUD ----------
@@ -450,8 +605,14 @@ export class Game {
   }
 
   _updateReachable() {
-    this.reachable = reachableFrom(this.level, this.alive, this.cur);
+    this.reachable = reachableFrom(this.level, this.alive, this.stance);
     this.scene.setReachable(this.reachable);
+    // 空きマス(トロッコ降車後)ではそのマスに次のジャンプ力を表示
+    this.scene.setRabbitNumber(
+      this.curIdx === -1 ? this.stance.power : null,
+      this.stance.x,
+      this.stance.y
+    );
 
     if (this.reachable.length === 0) {
       // 詰み
@@ -476,13 +637,26 @@ export class Game {
     this.state = 'busy';
     this.scene.clearRings();
     this.scene.clearHint();
-    this.history.push({ cur: this.cur });
+    this.scene.setRabbitNumber(null); // 空きマスの数字はその場で消す(追従させない)
 
-    this.sfx.hop();
-    const fromIdx = this.cur;
-    this.alive[fromIdx] = false; // 元いたマスは消える(スタート地点はalive[0]=false済)
+    const fromStance = this.stance;
+    const fromIdx = this.curIdx; // 立っていたマス(空きマスなら -1)
+    const onSpring = fromIdx >= 0 && this.level.tiles[fromIdx].spring;
+    // 着地の解決(トロッコは乗った進行方向へ走る)。undo用に消えるマスと直前スタンスを記録
+    const landInfo =
+      id === 'goal'
+        ? null
+        : landStance(this.level, this.alive, fromStance.x, fromStance.y, id);
+    this.history.push({
+      stance: fromStance,
+      curIdx: fromIdx,
+      eaten: landInfo ? landInfo.eaten.slice() : [],
+    });
 
-    await this.scene.jumpTo(fromIdx, id);
+    this.sfx[onSpring ? 'boing' : 'hop']();
+
+    // 元いたマスを沈める(空きマスからのジャンプなら沈めるマスなし)
+    await this.scene.jumpTo(fromStance, id, fromIdx);
     this.sfx.land();
 
     if (id === 'goal') {
@@ -490,13 +664,32 @@ export class Game {
       return;
     }
 
-    this.cur = id;
-    this.alive[id] = false; // 乗っているマスには飛べない
-    this._eatTile(id); // ニンジンをパクッ(+value)
+    const tile = this.level.tiles[id];
+    for (const idx of landInfo.eaten) this.alive[idx] = false;
+    this._eatTile(id); // 着地マス(トロッコ本体)のニンジンをパクッ
+
+    // トロッコ: レール方向へ運ばれ、段差/端の手前で大破 → 空きマスに降りる
+    if (tile.cart) {
+      this.sfx.slide();
+      await this.scene.rideCart(id, landInfo.stance);
+    }
+
+    this.stance = landInfo.stance;
+    this.curIdx = tile.cart ? -1 : id;
+    this.scene.setOnSpring(this.curIdx >= 0 && this.level.tiles[this.curIdx].spring);
 
     this.state = 'playing';
     this._updateHUD();
     this._updateReachable();
+  }
+
+  // 一度だけ出す説明トースト
+  _toastOnce(flag, msg) {
+    try {
+      if (localStorage.getItem(SAVE_KEY + flag)) return;
+      localStorage.setItem(SAVE_KEY + flag, '1');
+    } catch (e) {}
+    this._toast(msg, 2600);
   }
 
   _onClear() {
@@ -504,16 +697,17 @@ export class Game {
     this.scene.celebrate();
     this.sfx.clear();
 
-    // スコア計算: (残ニンジン×10 + ノーヒントボーナス) × リトライ倍率
+    // スコア計算: (残ニンジン×10 + 各種ボーナス) × リトライ倍率
     const carrotBonus = this.carrots * SCORE_PER_CARROT;
+    const perfect = this.level.tiles.every((t) => t.eaten) ? PERFECT_BONUS : 0;
+    const movesUsed = this.history.length;
+    const speed = movesUsed <= this.level.minMoves + 1 ? SPEED_BONUS : 0;
     const noHint = this.hintsUsed === 0 ? NO_HINT_BONUS : 0;
     const mult = retryMult(this.retryCount);
-    const gain = Math.round((carrotBonus + noHint) * mult);
+    const gain = Math.round((carrotBonus + perfect + speed + noHint) * mult);
     this.score += gain;
-    if (this.score > this.hiscore) {
-      this.hiscore = this.score;
-      this._saveSettings();
-    }
+    this._lastGain = gain; // クリアDLGの「もういちど」で取り消せるように覚えておく
+    // ハイスコアの確定は「つぎのステージへ」を押した時点(やり直しで巻き戻せるため)
 
     $('clear-stage').textContent = this.stage;
     // 次ステージを先にセーブ（途中で閉じても続きから遊べる）
@@ -522,7 +716,7 @@ export class Game {
     setTimeout(() => {
       if (this.state !== 'clear') return;
       this._show('modal-clear');
-      this._playClearSequence({ carrotBonus, noHint, mult, gain });
+      this._playClearSequence({ carrotBonus, perfect, speed, noHint, mult, gain });
     }, 1500);
   }
 
@@ -534,12 +728,16 @@ export class Game {
 
     const rows = {
       carrots: $('sb-carrots-row'),
+      perfect: $('sb-perfect-row'),
+      speed: $('sb-speed-row'),
       nohint: $('sb-nohint-row'),
       mult: $('sb-mult-row'),
       total: $('sb-total-row'),
       cum: $('sb-cum-row'),
     };
     // 出ない行は非表示、出る行は「待機」状態に
+    rows.perfect.classList.toggle('hidden', !d.perfect);
+    rows.speed.classList.toggle('hidden', !d.speed);
     rows.nohint.classList.toggle('hidden', !d.noHint);
     rows.mult.classList.toggle('hidden', d.mult === 1);
     for (const r of Object.values(rows)) {
@@ -550,6 +748,8 @@ export class Game {
     // 値をセット（ニンジンはカウントアップで後から入る）
     $('sb-carrots-n').textContent = 0;
     $('sb-carrots').textContent = '+0';
+    $('sb-perfect').textContent = `+${fmt(PERFECT_BONUS)}`;
+    $('sb-speed').textContent = `+${fmt(SPEED_BONUS)}`;
     $('sb-nohint').textContent = `+${fmt(NO_HINT_BONUS)}`;
     if (d.mult !== 1) {
       $('sb-mult-label').textContent =
@@ -571,6 +771,14 @@ export class Game {
       this._countUpCarrots(this.carrots);
     });
     let t = 1400;
+    if (d.perfect) {
+      later(t, () => pop(rows.perfect));
+      t += 380;
+    }
+    if (d.speed) {
+      later(t, () => pop(rows.speed));
+      t += 380;
+    }
     if (d.noHint) {
       later(t, () => pop(rows.nohint));
       t += 380;
@@ -705,13 +913,20 @@ export class Game {
     this.scene.clearHint();
 
     const prev = this.history.pop();
-    const fromId = this.cur;
-    // 今いたマスはフィールドに残る（また飛び先の候補になる。ニンジンは食べたあとなので戻らない）
-    this.alive[fromId] = true;
-    // 戻り先のマスはウサギが乗るので alive は false のまま
-    await this.scene.rewindTo(prev.cur, fromId);
+    // この手で消えたマスをフィールドに戻す(ニンジンは食べたあとなので戻らない)
+    for (const idx of prev.eaten) {
+      this.alive[idx] = true;
+      this.scene.restoreTile(idx);
+    }
+    // 戻り先がマスならその沈んだメッシュも戻す(空きマスなら不要)
+    if (prev.curIdx >= 0) this.scene.restoreTile(prev.curIdx);
+    await this.scene.rewindHop(prev.stance);
 
-    this.cur = prev.cur;
+    this.stance = prev.stance;
+    this.curIdx = prev.curIdx;
+    this.scene.setOnSpring(
+      this.curIdx >= 0 && this.level.tiles[this.curIdx].spring
+    );
     this.state = 'playing';
     this._updateHUD();
     this._updateReachable();
@@ -723,7 +938,7 @@ export class Game {
       this._toast(`ニンジンが足りません（ヒントは${COST_HINT}本）`);
       return;
     }
-    const path = findSolution(this.level, this.alive, this.cur);
+    const path = findSolution(this.level, this.alive, this.stance);
     if (!path) {
       this._toast('この状態ではクリアできません。まきもどしを使おう！');
       return;

@@ -56,7 +56,7 @@
         <div id="resume-info" class="hidden"></div>
         <p class="modal-text">ステージコードを入力してもOK</p>
         <div class="code-row">
-          <input id="code-input" type="text" inputmode="numeric" placeholder="例: 1234-5" />
+          <input id="code-input" type="text" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="8" placeholder="例: MWD-H4F" />
           <button id="btn-code-go" class="big-btn primary slim">GO</button>
         </div>
         <button id="btn-paste" class="big-btn slim self-center">📋 ペースト</button>
@@ -71,12 +71,12 @@
         <ul class="help-list">
           <li>🐰 ウサギは、いま乗っている畑の<b>ニンジンの本数（1〜3）</b>だけ、タテかヨコにジャンプします。</li>
           <li>✨ 光っているマスへタップ（PCは矢印キー）で移動。</li>
-          <li>🕳️ 飛び立った畑は消えます。<b>すべての畑を通ってから</b>、お花の台座で待つ<b>ピンクのウサギ</b>のところへ！</li>
-          <li>🥕 カウントは残りジャンプ回数。うごけなくなったらゲームオーバー。</li>
-          <li>⛰️ <b>段差のある畑</b>：高い所へ上るにはパワーが1段ごとに<b>1つ多く</b>必要。低い所へ降りるときは1段ごとに<b>1マス遠くへ</b>飛べる。出発と着地より高い地形は飛び越えられないよ。</li>
-          <li>🥕 マスに乗るとニンジンを食べて、数字のぶんだけ<b>ニンジンがたまる</b>よ。</li>
-          <li>★ <b>まきもどし</b>（1手前にもどる）＝ニンジン3本 ／ 💡 <b>ヒント</b>（次の一手を光らせる）＝ニンジン5本。食べたニンジンと引きかえに使えるよ。</li>
-          <li>🏆 クリアすると<b>のこしたニンジンがスコア</b>になる（1本=10点）！ヒントを使わなければ<b>+100</b>、リトライ0回なら<b>×1.5</b>のごほうび（3回以上だと×0.5…）。ニンジンは次のステージに持ちこせないよ。</li>
+          <li>🕳️ 飛び立った畑は消えます。ルートは自由！<b>すきなだけニンジンを集めて</b>、お花の台座で待つ<b>ピンクのウサギ</b>のところへ行けばクリア。うごけなくなったらゲームオーバー。</li>
+          <li>🥕 マスに乗るとニンジンを食べて、数字のぶんだけ<b>ニンジンがたまる</b>よ。✨の<b>大ニンジン</b>は1本で<b>5本分</b>！</li>
+          <li>⛰️ <b>段差</b>：高い所へは1段ごとにパワーが<b>1つ多く</b>必要。降りるときは1段ごとに<b>1マス遠くへ</b>。出発と着地より高い地形は飛び越えられない。</li>
+          <li>🦘 <b>ジャンプ台</b>のマスからは<b>2マス遠くへ</b>飛べる ／ 🛒 <b>トロッコ</b>のマスに乗ると<b>進んだ方向</b>へ走り、かべ(段差や畑)の手前で止まる。止まったマスから、トロッコの<b>数字ぶん</b>ジャンプできる。</li>
+          <li>★ <b>まきもどし</b>（1手前にもどる）＝ニンジン3本 ／ 💡 <b>ヒント</b>（次の一手を光らせる）＝ニンジン5本。</li>
+          <li>🏆 スコアは<b>のこしたニンジン×10点</b>＋ボーナス：<b>全マス回収+300</b>、<b>最短クリア+300</b>、<b>ノーヒント+100</b>。リトライ0回なら<b>×1.5</b>（3回以上は×0.5…）。じっくり集めるか、駆け抜けるか、きみしだい！</li>
           <li>📤 下の「コード」ボタンでステージコードを表示・コピー。コード入力すれば同じステージを共有・再開できます。</li>
         </ul>
         <p class="modal-text small">PCキー: 矢印=移動 / Enter=OK / R=リトライ / Z=まきもどし / H=ヒント / M=サウンド</p>
@@ -91,12 +91,18 @@
         <p class="modal-text">ステージ <b id="clear-stage">1</b> クリア！</p>
         <div class="score-breakdown">
           <div class="sb-row" id="sb-carrots-row"><span>のこりニンジン <span id="sb-carrots-n">0</span>本</span> <b id="sb-carrots">+0</b></div>
+          <div class="sb-row" id="sb-perfect-row">パーフェクト！全マス回収 <b id="sb-perfect">+300</b></div>
+          <div class="sb-row" id="sb-speed-row">スピードボーナス <b id="sb-speed">+300</b></div>
           <div class="sb-row" id="sb-nohint-row">ノーヒントボーナス <b id="sb-nohint">+100</b></div>
           <div class="sb-row" id="sb-mult-row"><span id="sb-mult-label">ノーリトライボーナス</span> <b id="sb-mult">×1.5</b></div>
           <div class="sb-row sb-total" id="sb-total-row">スコア <b id="sb-total">+150</b></div>
           <div class="sb-row sb-cum" id="sb-cum-row">ごうけい <b id="sb-cum">150</b></div>
         </div>
         <button id="btn-next" class="big-btn primary">つぎのステージへ</button>
+        <div class="clear-btn-row">
+          <button id="btn-clear-retry" class="big-btn" title="スコアをやり直して再挑戦（ペナルティなし）">もういちど</button>
+          <button id="btn-clear-copy" class="big-btn sub">📋 コード</button>
+        </div>
       </div>
     </div>
 
@@ -130,6 +136,31 @@
     </div>
 
     <div id="toast" class="hidden"></div>
+
+    <!-- デバッグパネル(本番非表示: #debug ハッシュ か Dキー3連打で有効化) -->
+    <div id="debug-panel" class="hidden">
+      <div class="dbg-row">
+        <span class="dbg-title">DEBUG</span>
+        <button id="dbg-close" class="dbg-btn">×</button>
+      </div>
+      <div class="dbg-row">
+        <input id="dbg-stage" type="number" min="1" max="999" placeholder="stage" />
+        <button id="dbg-go" class="dbg-btn">GO</button>
+      </div>
+      <div class="dbg-row">
+        <button id="dbg-prev" class="dbg-btn">◀ -1</button>
+        <button id="dbg-next" class="dbg-btn">+1 ▶</button>
+        <button id="dbg-skip10" class="dbg-btn">+10 ⏩</button>
+      </div>
+      <div class="dbg-row">
+        <button id="dbg-solve" class="dbg-btn wide">オートクリア</button>
+      </div>
+      <div class="dbg-row">
+        <input id="dbg-seed" type="number" placeholder="seed(任意)" />
+        <button id="dbg-seed-go" class="dbg-btn">seed適用</button>
+      </div>
+      <div id="dbg-info" class="dbg-info"></div>
+    </div>
   </div>
   <script type="module" src="/src/main.js"></script>
 </body>

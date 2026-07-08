@@ -470,8 +470,89 @@ body {
   font-family: inherit;
   color: var(--brown);
   text-align: center;
+  text-transform: uppercase;
   outline: none;
   min-width: 0;
+}
+
+/* ---------- デバッグパネル ---------- */
+#debug-panel {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 50;
+  background: rgba(20, 20, 30, 0.86);
+  border: 1px solid #556;
+  border-radius: 10px;
+  padding: 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 168px;
+}
+
+.dbg-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.dbg-title {
+  color: #7fe;
+  font-size: 11px;
+  font-weight: 800;
+  flex: 1;
+  letter-spacing: 1px;
+}
+
+.dbg-btn {
+  background: #3a4a6a;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 7px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  flex: 1;
+}
+
+.dbg-btn.wide {
+  flex: 1;
+}
+
+.dbg-btn:active {
+  background: #2a3a5a;
+}
+
+#debug-panel input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid #556;
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 12px;
+  background: #1a1a24;
+  color: #fff;
+}
+
+.dbg-info {
+  color: #9ab;
+  font-size: 9.5px;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+/* クリアDLGの下段ボタン(もういちど/コードコピー) */
+.clear-btn-row {
+  display: flex;
+  gap: 8px;
+}
+
+.clear-btn-row .big-btn {
+  flex: 1;
+  padding: 11px 10px;
+  font-size: 15px;
 }
 
 #code-input:focus {

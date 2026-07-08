@@ -8,7 +8,6 @@ import {
   makeIsland,
   makeNumberSprite,
   makeRing,
-  makeHintRing,
   makeTerrain,
   HSTEP,
 } from './models.js';
@@ -69,8 +68,8 @@ export class GameScene {
     this.tileMeshes = [];
     this.goalMesh = null;
     this.minis = []; // にぎやかしの極小ウサギ
-    this.rings = [];
-    this.hintMarker = null;
+    this.reach = []; // 今飛べるマス(マス全体を明滅させて示す)
+    this.hintId = null; // ヒント対象(別色で明滅)
     this.tweens = [];
     this.clock = new THREE.Clock();
     this.time = 0;
@@ -130,6 +129,7 @@ export class GameScene {
     this.level = level;
     this.goalCollected = false;
     this.eatStart = -1;
+    this.setRabbitNumber(null);
     for (const t of this.tileMeshes) this.world.remove(t.group);
     if (this.goalMesh) this.world.remove(this.goalMesh);
     this.clearRings();
@@ -154,15 +154,23 @@ export class GameScene {
     this.terrain = makeTerrain(level.heights);
     this.scene.add(this.terrain);
 
+    this.onSpring = false;
     level.tiles.forEach((t, i) => {
-      const group = makeTile(t.value);
+      const group = makeTile(t);
       const baseY = this._cellY(t.x, t.y);
       group.position.copy(this.worldPos(t.x, t.y, baseY));
       const number = makeNumberSprite(t.value);
       number.visible = this.numbersVisible;
       group.add(number);
       this.world.add(group);
-      this.tileMeshes.push({ group, number, baseY, idx: i, alive: true });
+      this.tileMeshes.push({
+        group,
+        number,
+        baseY,
+        idx: i,
+        alive: true,
+        spring: !!t.spring,
+      });
 
       // 登場アニメーション
       group.position.y = baseY - 1.2;
@@ -485,47 +493,47 @@ export class GameScene {
     }
   }
 
-  // ---------- 点滅表示 ----------
+  // ---------- 到達マスの明滅表示 ----------
+  // 枠(リング)は段差や密集で隠れて見えなくなるので廃止。
+  // 代わりにマスのモデル全体を発光させて明滅させる(_frameで脈動)。
   clearRings() {
-    this.clearHint();
-    for (const r of this.rings) r.mesh.parent && r.mesh.parent.remove(r.mesh);
-    this.rings = [];
+    for (const r of this.reach) {
+      for (const mm of r.mats) {
+        mm.m.emissive.setHex(mm.e);
+        mm.m.emissiveIntensity = mm.i;
+      }
+    }
+    this.reach = [];
+    this.hintId = null;
   }
 
   setReachable(list) {
     this.clearRings();
     for (const item of list) {
-      const ring = makeRing(item === 'goal' ? 0xffd24a : 0xfffb8f);
-      const parent =
-        item === 'goal' ? this.goalMesh : this.tileMeshes[item].group;
-      parent.add(ring);
-      this.rings.push({ mesh: ring, id: item });
+      const group = item === 'goal' ? this.goalMesh : this.tileMeshes[item].group;
+      if (!group) continue;
+      // 発光を戻せるよう、各マテリアルの元の emissive を控えておく
+      const mats = [];
+      group.traverse((c) => {
+        if (!c.material) return;
+        const arr = Array.isArray(c.material) ? c.material : [c.material];
+        for (const m of arr) {
+          if (!m.emissive) continue;
+          mats.push({ m, e: m.emissive.getHex(), i: m.emissiveIntensity });
+        }
+      });
+      this.reach.push({ id: item, mats });
     }
   }
 
-  // ヒント: 対象の黄色リングを「白フチ付きピンク」に差し替える
-  // (時間では消えず、プレイヤーが移動するまで表示され続ける)
+  // ヒント: 対象マスだけ別色(ピンク)で強めに明滅させる。
+  // 時間では消えず、プレイヤーが移動する(setReachable/clearRings)まで続く。
   showHint(target) {
-    this.clearHint();
-    const entry = this.rings.find((r) => r.id === target);
-    if (entry) entry.mesh.visible = false; // 黄リングを一旦隠す
-    this._hintHidden = entry || null;
-    const marker = makeHintRing();
-    const parent =
-      target === 'goal' ? this.goalMesh : this.tileMeshes[target].group;
-    parent.add(marker);
-    this.hintMarker = marker;
+    this.hintId = target;
   }
 
   clearHint() {
-    if (this.hintMarker) {
-      this.hintMarker.parent && this.hintMarker.parent.remove(this.hintMarker);
-      this.hintMarker = null;
-    }
-    if (this._hintHidden) {
-      this._hintHidden.mesh.visible = true; // 黄リングを戻す
-      this._hintHidden = null;
-    }
+    this.hintId = null;
   }
 
   setNumbersVisible(v) {
@@ -565,11 +573,12 @@ export class GameScene {
     }
   }
 
-  // ウサギがジャンプ。fromIdx のマスは沈む。Promise を返す。
+  // ウサギがジャンプ。sinkIdx>=0 ならそのマスを沈める。Promise を返す。
   // タメ(しゃがみ) → ぴょーん(高い弧・伸び・前傾・手足を伸ばす) → 着地バウンド の3段モーション
-  jumpTo(fromIdx, target) {
+  // from は stance {x,y}(空きマスにも立てる)。
+  jumpTo(fromStance, target, sinkIdx = -1) {
     return new Promise((resolve) => {
-      const from = this.level.tiles[fromIdx];
+      const from = fromStance;
       const to = target === 'goal' ? this.level.goal : this.level.tiles[target];
       const p0 = this.worldPos(from.x, from.y, this._standY(from.x, from.y));
       const p1 = this.worldPos(to.x, to.y, this._standY(to.x, to.y));
@@ -638,7 +647,39 @@ export class GameScene {
         this.rabbit.scale.setScalar(1);
       }, 'rabbit');
 
-      this._sinkTile(fromIdx);
+      if (sinkIdx >= 0) this._sinkTile(sinkIdx);
+    });
+  }
+
+  // トロッコで運ばれる: 荷車がウサギを乗せてレール方向の停止セルまで走り、大破して沈む。
+  rideCart(cartIdx, stop) {
+    return new Promise((resolve) => {
+      const c = this.level.tiles[cartIdx];
+      const cartTm = this.tileMeshes[cartIdx];
+      const rg = cartTm.group.userData.railGroup;
+      const cart = cartTm.group.userData.cart;
+      const p0 = this.worldPos(c.x, c.y, this._standY(c.x, c.y));
+      const p1 = this.worldPos(stop.x, stop.y, this._standY(stop.x, stop.y));
+      const dist = Math.abs(stop.x - c.x) + Math.abs(stop.y - c.y);
+      this.killTweens('rabbit');
+      // 荷車を進行方向へ向ける(乗った向きで走る)
+      if (rg && dist > 0) {
+        rg.rotation.y = Math.atan2(stop.x - c.x, stop.y - c.y);
+      }
+      if (dist > 0) this.rabbit.rotation.y = Math.atan2(p1.x - p0.x, p1.z - p0.z);
+      const dur = 0.16 + dist * 0.12;
+      this.tween(dur, 0, (t) => t, (t) => {
+        const e = t * t * (3 - 2 * t); // なめらか加減速
+        this.rabbit.position.lerpVectors(p0, p1, e);
+        this.rabbit.position.y = p0.y + 0.05 * Math.sin(e * Math.PI);
+        this.rabbit.scale.set(1, 1, 1);
+        if (rg) rg.position.set((stop.x - c.x) * e, 0, (stop.y - c.y) * e);
+        if (cart) for (const w of cart.userData.wheels || []) w.rotation.x -= 0.7;
+      }, () => {
+        this.rabbit.position.copy(p1);
+        this._breakCart(cartIdx); // 大破してマスが沈む
+        resolve();
+      }, 'rabbit');
     });
   }
 
@@ -655,26 +696,15 @@ export class GameScene {
     }, `tile${idx}`);
   }
 
-  // まきもどし：ウサギが戻り、マスが復活する
-  rewindTo(restoreIdx, fromTarget) {
+  // まきもどし：ウサギが今の位置から toStance の位置へ戻る(ふわっとホップ)
+  rewindHop(toStance) {
     return new Promise((resolve) => {
-      const tm = this.tileMeshes[restoreIdx];
-      const g = tm.group;
-      tm.alive = true;
-      g.visible = true;
-      this.killTweens(`tile${restoreIdx}`);
-      this.tween(0.35, 0, easeOut, (k) => {
-        g.position.y = tm.baseY - 1.3 * (1 - k);
-        g.scale.setScalar(Math.max(0.01, k));
-      }, null, `tile${restoreIdx}`);
-
-      const from =
-        fromTarget === 'goal'
-          ? this.level.goal
-          : this.level.tiles[fromTarget];
-      const to = this.level.tiles[restoreIdx];
-      const p0 = this.worldPos(from.x, from.y, this._standY(from.x, from.y));
-      const p1 = this.worldPos(to.x, to.y, this._standY(to.x, to.y));
+      const p0 = this.rabbit.position.clone();
+      const p1 = this.worldPos(
+        toStance.x,
+        toStance.y,
+        this._standY(toStance.x, toStance.y)
+      );
       this.rabbit.rotation.y = Math.atan2(p1.x - p0.x, p1.z - p0.z);
       this.killTweens('rabbit');
       this.tween(0.35, 0.05, (t) => t, (k) => {
@@ -703,6 +733,99 @@ export class GameScene {
   }
 
   // ※まきもどしで復元されたマスは「食べたあと」なのでニンジンは戻さない
+
+  // まきもどしで沈んだマスを盤面に戻す
+  restoreTile(idx) {
+    const tm = this.tileMeshes[idx];
+    // トロッコは大破・移動しているので位置とスケールを元に戻す
+    const rg = tm.group.userData.railGroup;
+    if (rg) {
+      this.killTweens(`cart${idx}`);
+      rg.position.set(0, 0, 0);
+      rg.scale.setScalar(1);
+      rg.rotation.y = 0;
+      rg.visible = true;
+    }
+    if (tm.alive && tm.group.visible) return;
+    tm.alive = true;
+    tm.group.visible = true;
+    this.killTweens(`tile${idx}`);
+    this.tween(0.3, 0, easeOut, (k) => {
+      tm.group.position.y = tm.baseY - 1.3 * (1 - k);
+      tm.group.scale.setScalar(Math.max(0.01, k));
+    }, null, `tile${idx}`);
+  }
+
+  // 荷車が大破する演出 → 破片が飛び散ってマスが沈む
+  _breakCart(idx) {
+    const tm = this.tileMeshes[idx];
+    const rg = tm.group.userData.railGroup;
+    const wp = new THREE.Vector3();
+    (rg || tm.group).getWorldPosition(wp);
+    if (rg) rg.visible = false; // 荷車は一瞬で砕けて消える
+
+    // 破片(木＝茶, 金属＝青灰, 車輪＝黒)を弾き飛ばす
+    const colors = [0x3f8fd0, 0x2f6ea8, 0xcfe4f2, 0x2b2b30, 0xffd24a];
+    for (let i = 0; i < 12; i++) {
+      const sz = 0.07 + Math.random() * 0.08;
+      const m = new THREE.Mesh(
+        new THREE.BoxGeometry(sz, sz, sz),
+        new THREE.MeshStandardMaterial({
+          color: colors[i % colors.length],
+          flatShading: true,
+        })
+      );
+      m.position.set(wp.x, wp.y + 0.35, wp.z);
+      this.scene.add(m);
+      this._fx.add(m);
+      const ang = Math.random() * Math.PI * 2;
+      const sp = 1.2 + Math.random() * 1.8;
+      const vx = Math.cos(ang) * sp;
+      const vz = Math.sin(ang) * sp;
+      const vy = 2.2 + Math.random() * 2.2;
+      const rx = (Math.random() - 0.5) * 0.8;
+      const ry = (Math.random() - 0.5) * 0.8;
+      this.tween(0.55 + Math.random() * 0.3, 0, (t) => t, (k) => {
+        m.position.set(wp.x + vx * k, wp.y + 0.35 + vy * k - 4.5 * k * k, wp.z + vz * k);
+        m.rotation.x += rx;
+        m.rotation.y += ry;
+        m.scale.setScalar(Math.max(0.01, 1 - k * 0.7));
+      }, () => this._removeFx(m));
+    }
+    // 砂ぼこりのリング
+    const ring = makeRing(0xe8dcc0);
+    ring.position.set(wp.x, 0.03, wp.z);
+    ring.rotation.x = -Math.PI / 2;
+    this.scene.add(ring);
+    this._fx.add(ring);
+    this.tween(0.4, 0, easeOut, (k) => {
+      ring.scale.setScalar(0.5 + k * 2.2);
+      ring.material.opacity = 0.7 * (1 - k);
+    }, () => this._removeFx(ring));
+
+    this._sinkTile(idx);
+  }
+
+  setOnSpring(v) {
+    this.onSpring = v;
+  }
+
+  // 空きマス(トロッコ降車後)の次のジャンプ力を、そのマスの位置に固定表示する。
+  // ウサギの子ではなくワールドに置くので、ジャンプしても追従せずその場に残る。
+  setRabbitNumber(n, gx, gy) {
+    if (this.rabbitNum) {
+      this.scene.remove(this.rabbitNum);
+      if (this.rabbitNum.material.map) this.rabbitNum.material.map.dispose();
+      this.rabbitNum.material.dispose();
+      this.rabbitNum = null;
+    }
+    if (n == null) return;
+    const spr = makeNumberSprite(n);
+    const p = this.worldPos(gx, gy, this._standY(gx, gy) + 1.5); // 頭上あたり
+    spr.position.copy(p);
+    this.scene.add(spr);
+    this.rabbitNum = spr;
+  }
 
   celebrate() {
     this.goalCollected = true;
@@ -807,16 +930,23 @@ export class GameScene {
       }
     }
 
-    // 点滅リング
-    const pulse = 0.55 + 0.45 * Math.sin(this.time * 5);
-    for (const r of this.rings) {
-      r.mesh.material.opacity = 0.35 + 0.55 * pulse;
-      r.mesh.scale.setScalar(1 + 0.08 * pulse);
-    }
-    if (this.hintMarker) {
-      const o = 0.55 + 0.45 * Math.sin(this.time * 8);
-      for (const m of this.hintMarker.children) m.material.opacity = o;
-      this.hintMarker.scale.setScalar(1 + 0.06 * pulse);
+    // 到達マスはモデル全体を明滅（発光）させる。ヒント対象はピンクで強めに。
+    const pulse = 0.5 + 0.5 * Math.sin(this.time * 5);
+    const hintPulse = 0.5 + 0.5 * Math.sin(this.time * 8);
+    for (const r of this.reach) {
+      const isHint = this.hintId != null && r.id === this.hintId;
+      const isGoal = r.id === 'goal';
+      const col = isHint ? 0xff2f8e : isGoal ? 0xffcf22 : 0xfff04a;
+      // ゴールは他のマスより強めに光らせて選択肢だと分かりやすくする
+      const inten = isHint
+        ? 0.2 + 0.42 * hintPulse
+        : isGoal
+        ? 0.4 + 0.6 * pulse
+        : 0.05 + 0.26 * pulse;
+      for (const mm of r.mats) {
+        mm.m.emissive.setHex(col);
+        mm.m.emissiveIntensity = inten;
+      }
     }
 
     // ゴールのピンクウサギの待機モーション
@@ -874,15 +1004,22 @@ export class GameScene {
         inner.rotation.x = 0;
       }
 
-      // ときどき足踏みホップ（伸び縮みのジャンプモーション付き。食事中・移動中はしない）
-      const hopT = this.time % 4.3;
-      if (!rabbitBusy && !eating && hopT < 0.34) {
-        const k = hopT / 0.34;
-        inner.position.y = 0.13 * Math.sin(k * Math.PI);
-        // 踏切と着地でつぶれ、空中で伸びる
-        stretch *= 1 + 0.24 * Math.sin(k * Math.PI) - 0.12 * Math.abs(Math.cos(k * Math.PI));
+      if (this.onSpring && !rabbitBusy && !eating) {
+        // ジャンプ台の上ではその場でぽよんぽよんバウンドし続ける
+        const bt = Math.abs(Math.sin(this.time * 5.5));
+        inner.position.y = bt * 0.18;
+        stretch *= 1 + 0.15 * bt - 0.1 * (1 - bt);
       } else {
-        inner.position.y = 0;
+        // ときどき足踏みホップ（伸び縮みのジャンプモーション付き。食事中・移動中はしない）
+        const hopT = this.time % 4.3;
+        if (!rabbitBusy && !eating && hopT < 0.34) {
+          const k = hopT / 0.34;
+          inner.position.y = 0.13 * Math.sin(k * Math.PI);
+          // 踏切と着地でつぶれ、空中で伸びる
+          stretch *= 1 + 0.24 * Math.sin(k * Math.PI) - 0.12 * Math.abs(Math.cos(k * Math.PI));
+        } else {
+          inner.position.y = 0;
+        }
       }
       inner.scale.y = 1.18 * stretch;
 
@@ -893,6 +1030,15 @@ export class GameScene {
         e.mesh.rotation.x = e.baseX + twitch - 0.5 * this.jumpPose;
       }
     }
+    // ジャンプ台のマスは常時ぽよんぽよん弾む（動きで見分けられるように）
+    for (const t of this.tileMeshes) {
+      if (!t.spring || !t.alive || !t.group.visible) continue;
+      // 登場/沈み中(スケールが1でない)は触らない
+      if (Math.abs(t.group.scale.x - 1) > 0.05) continue;
+      const b = Math.abs(Math.sin(this.time * 4.5 + t.idx * 1.3));
+      t.group.scale.y = 0.94 + 0.1 * b;
+    }
+
     // 極小ウサギがゆっくり行き来する（にぎやかし）
     const miniSide = { x: Math.SQRT1_2, z: -Math.SQRT1_2 };
     for (const m of this.minis) {

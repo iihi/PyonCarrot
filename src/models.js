@@ -101,9 +101,11 @@ export function makeRabbit() {
 }
 
 // ---------- ニンジン1本 ----------
-function makeCarrot(scale = 1) {
+function makeCarrot(scale = 1, golden = false) {
   const g = new THREE.Group();
-  const orange = mat(0xff7a1c);
+  const orange = golden
+    ? mat(0xffd24a, { emissive: 0x8a6a00, emissiveIntensity: 0.45, roughness: 0.45 })
+    : mat(0xff7a1c);
   // 本体を2段にしてニンジンらしいふくらみを出す
   const upper = mesh(new THREE.CylinderGeometry(0.16, 0.09, 0.26, 6), orange, 0, 0.42, 0);
   g.add(upper);
@@ -150,8 +152,38 @@ const CARROT_LAYOUT = {
   ],
 };
 
-export function makeTile(value) {
+// コイルバネ(ジャンプ台)。土台いっぱいの大きな螺旋+天板。金属光沢のシルバー。
+function makeSpring() {
   const g = new THREE.Group();
+  // コイルは明るい光沢シルバー、上下の皿は一段濃いシルバー
+  const coilMat = mat(0xe2e7ee, { roughness: 0.22, metalness: 0.75 });
+  const plateMat = mat(0x9aa2ad, { roughness: 0.32, metalness: 0.7 });
+  const baseY = 0.2;
+  const h = 0.4;
+  const r = 0.32; // 台座(半径0.4)いっぱい
+  const coils = 4;
+  const seg = 64;
+  const pts = [];
+  for (let i = 0; i <= seg; i++) {
+    const t = i / seg;
+    const a = t * coils * Math.PI * 2;
+    pts.push(new THREE.Vector3(Math.cos(a) * r, baseY + t * h, Math.sin(a) * r));
+  }
+  const tube = new THREE.Mesh(
+    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), seg, 0.065, 6, false),
+    coilMat
+  );
+  tube.castShadow = true;
+  g.add(tube);
+  // 下皿・上の天板(黄色で台っぽく)
+  g.add(mesh(new THREE.CylinderGeometry(r + 0.06, r + 0.08, 0.05, 12), plateMat, 0, baseY, 0));
+  g.add(mesh(new THREE.CylinderGeometry(r + 0.05, r + 0.02, 0.06, 12), plateMat, 0, baseY + h, 0));
+  return { group: g, topY: baseY + h + 0.04 };
+}
+
+export function makeTile(tile) {
+  const g = new THREE.Group();
+  const value = tile.value;
 
   const mound = mesh(
     new THREE.CylinderGeometry(0.4, 0.5, 0.18, 7),
@@ -170,9 +202,17 @@ export function makeTile(value) {
   );
   g.add(top);
 
+  // ジャンプ台: 土台の上に赤いコイルバネ+天板。ニンジンは天板の上に乗る
+  let carrotLift = 0;
+  if (tile.spring) {
+    const spring = makeSpring();
+    g.add(spring.group);
+    carrotLift = spring.topY - 0.18; // ニンジンをバネの上へ持ち上げる
+  }
+
   const carrots = new THREE.Group();
   for (const o of CARROT_LAYOUT[value] || CARROT_LAYOUT[1]) {
-    const c = makeCarrot(CARROT_SCALE);
+    const c = makeCarrot(CARROT_SCALE, !!tile.golden);
     c.position.set(
       ROW_AXIS.x * o.r + FWD_AXIS.x * o.f,
       0.18,
@@ -180,10 +220,93 @@ export function makeTile(value) {
     );
     carrots.add(c);
   }
+  // 大ニンジンは名前どおり見た目も大きく（本数が多いほど控えめに拡大）
+  if (tile.golden) {
+    carrots.scale.setScalar(value === 1 ? 1.4 : value === 2 ? 1.25 : 1.15);
+  }
   // 数字バッジと被らないよう、全体を画面の少し下(手前)へずらす
-  carrots.position.set(FWD_AXIS.x * 0.1, 0, FWD_AXIS.z * 0.1);
-  g.add(carrots);
+  carrots.position.set(FWD_AXIS.x * 0.1, carrotLift, FWD_AXIS.z * 0.1);
+
+  // トロッコマス: 作業用の木箱トロッコ(真ん中が開いた箱型+金属フチ+スポーク車輪)
+  // 進む向きは「乗ったときの進行方向」なので、向きを示す矢印等は付けない。ニンジンは箱の中に積む。
+  if (tile.cart) {
+    const railGroup = new THREE.Group();
+
+    const cart = new THREE.Group();
+    // 畑(茶)にも草(緑)にも埋もれない青系メタル
+    const wood = mat(0x3f8fd0, { roughness: 0.45, metalness: 0.45 });
+    const woodDark = mat(0x2f6ea8, { roughness: 0.5, metalness: 0.45 });
+    const metal = mat(0xcfe4f2, { roughness: 0.3, metalness: 0.55 });
+    const metalDark = mat(0x24506f, { roughness: 0.4, metalness: 0.5 });
+    const W = 0.56, L = 0.6, H = 0.32, TH = 0.055;
+    const floorY = 0.36;
+
+    // 木の底+四方の壁(開いた箱)
+    cart.add(mesh(new THREE.BoxGeometry(W, TH, L), woodDark, 0, floorY, 0));
+    cart.add(mesh(new THREE.BoxGeometry(W, H, TH), wood, 0, floorY + H / 2, L / 2 - TH / 2));
+    cart.add(mesh(new THREE.BoxGeometry(W, H, TH), wood, 0, floorY + H / 2, -L / 2 + TH / 2));
+    cart.add(mesh(new THREE.BoxGeometry(TH, H, L), wood, W / 2 - TH / 2, floorY + H / 2, 0));
+    cart.add(mesh(new THREE.BoxGeometry(TH, H, L), wood, -W / 2 + TH / 2, floorY + H / 2, 0));
+
+    // 金属の上フチ(4辺)と四隅の柱
+    const rimY = floorY + H;
+    cart.add(mesh(new THREE.BoxGeometry(W + 0.05, 0.055, TH + 0.02), metal, 0, rimY, L / 2 - TH / 2));
+    cart.add(mesh(new THREE.BoxGeometry(W + 0.05, 0.055, TH + 0.02), metal, 0, rimY, -L / 2 + TH / 2));
+    cart.add(mesh(new THREE.BoxGeometry(TH + 0.02, 0.055, L + 0.05), metal, W / 2 - TH / 2, rimY, 0));
+    cart.add(mesh(new THREE.BoxGeometry(TH + 0.02, 0.055, L + 0.05), metal, -W / 2 + TH / 2, rimY, 0));
+    for (const cxs of [-1, 1]) {
+      for (const czs of [-1, 1]) {
+        cart.add(
+          mesh(
+            new THREE.BoxGeometry(0.07, H + 0.05, 0.07),
+            metalDark,
+            cxs * (W / 2 - 0.03),
+            floorY + H / 2,
+            czs * (L / 2 - 0.03)
+          )
+        );
+      }
+    }
+
+    // スポーク車輪×4(グレー・ハブ+スポーク)
+    const wheels = [];
+    const wheelMat = mat(0x717681, { roughness: 0.4, metalness: 0.4 });
+    const spokeMat = mat(0x8b909a, { roughness: 0.4, metalness: 0.4 });
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        const w = new THREE.Group();
+        const tire = mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.045, 12), wheelMat);
+        tire.rotation.z = Math.PI / 2;
+        w.add(tire);
+        const hub = mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.06, 8), metalDark);
+        hub.rotation.z = Math.PI / 2;
+        w.add(hub);
+        for (let a = 0; a < 3; a++) {
+          const spoke = mesh(new THREE.BoxGeometry(0.03, 0.22, 0.02), spokeMat);
+          spoke.rotation.x = (a / 3) * Math.PI;
+          w.add(spoke);
+        }
+        w.position.set(sx * (W / 2 + 0.02), 0.2, sz * (L / 2 - 0.12));
+        wheels.push(w);
+        cart.add(w);
+      }
+    }
+    cart.userData.wheels = wheels;
+    railGroup.add(cart);
+
+    // ニンジンを箱の中に通常サイズで積む
+    carrots.position.set(0, floorY + 0.04, 0);
+    cart.add(carrots);
+
+    // 向きは乗車時に決まる(rideCartで回す)。初期は中立。
+    g.add(railGroup);
+    g.userData.cart = cart;
+    g.userData.railGroup = railGroup;
+  } else {
+    g.add(carrots);
+  }
   g.userData.carrots = carrots;
+
   return g;
 }
 
@@ -329,9 +452,11 @@ export function makeGoal() {
 }
 
 // ---------- 段差地形（段々畑） ----------
-// 高さレベルごとに草の色を少し変えて、パッと見で段が分かるようにする
-const TERRACE_TOP = [0, 0x8fd465, 0x9cdb6f, 0xaae37b];
-const TERRACE_SIDE = 0x96683f;
+// 高さレベルごとに草の明るさを一段ずつ変えて、パッと見で段数が分かるようにする
+// (島の草 0x82ca5c → 1段 → 2段 → 3段 と上がるほど明るい緑)
+// 島の草(0x82ca5c)から一段ずつはっきり明るく＆黄みを増やして、段数を見分けられるように
+const TERRACE_TOP = [0, 0x9ad35f, 0xbfe27f, 0xe2f0a2];
+const TERRACE_SIDE = 0x8a5a30;
 
 export function makeTerrain(heights) {
   const g = new THREE.Group();
@@ -506,27 +631,4 @@ export function makeRing(color = 0xfff05e) {
   ring.rotation.x = -Math.PI / 2;
   ring.position.y = 0.02;
   return ring;
-}
-
-// ---------- ヒントリング（白フチ付きピンク。緑の地面でも黄リングと見分けやすい） ----------
-export function makeHintRing() {
-  const g = new THREE.Group();
-  const flat = (r0, r1, color, y) => {
-    const m = new THREE.Mesh(
-      new THREE.RingGeometry(r0, r1, 24),
-      new THREE.MeshBasicMaterial({
-        color,
-        transparent: true,
-        opacity: 0.95,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-      })
-    );
-    m.rotation.x = -Math.PI / 2;
-    m.position.y = y;
-    return m;
-  };
-  g.add(flat(0.44, 0.68, 0xffffff, 0.024)); // 白フチ(下)
-  g.add(flat(0.485, 0.635, 0xff4f9e, 0.03)); // ピンク(上)
-  return g;
 }
