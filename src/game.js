@@ -154,6 +154,18 @@ export class Game {
       this.sfx.click();
       this._show('modal-help');
     };
+    // バージョン情報・著作権(タイトル画面)
+    $('btn-version').onclick = () => {
+      this.sfx.click();
+      $('ver-app').textContent = document.title;
+      $('ver-num').textContent =
+        'v' + (typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0');
+      this._show('modal-version');
+    };
+    $('version-close').onclick = () => {
+      this.sfx.click();
+      this._hide('modal-version');
+    };
     $('help-close').onclick = () => {
       this.sfx.click();
       this._hide('modal-help');
@@ -329,6 +341,7 @@ export class Game {
       'modal-clear',
       'modal-over',
       'modal-share',
+      'modal-version',
     ].some((id) => !$(id).classList.contains('hidden'));
   }
 
@@ -353,7 +366,7 @@ export class Game {
     this._lastIntroKey = null; // 次に始めたら季節説明を出し直す
     this._hideTutorial(false);
     this._cancelClearSeq();
-    for (const id of ['modal-help', 'modal-continue', 'modal-clear', 'modal-over', 'modal-share', 'modal-season']) {
+    for (const id of ['modal-help', 'modal-continue', 'modal-clear', 'modal-over', 'modal-share', 'modal-season', 'modal-version']) {
       this._hide(id);
     }
     this._show('screen-title');

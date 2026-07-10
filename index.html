@@ -40,6 +40,10 @@
         <button id="btn-continue" class="big-btn">つづきから / コード入力</button>
         <button id="btn-help" class="big-btn sub">あそびかた</button>
       </div>
+      <div class="title-footer">
+        <span class="title-copy">&copy; 2026 SERIALGAMES Inc.</span>
+        <button id="btn-version" class="title-ver-btn">バージョン情報</button>
+      </div>
     </div>
 
     <!-- コンティニュー -->
@@ -108,6 +112,27 @@
         <div class="share-code" id="share-code">0000-1</div>
         <button id="btn-share-copy" class="big-btn primary">📋 コードをコピー</button>
         <button id="share-close" class="big-btn sub">とじる</button>
+      </div>
+    </div>
+
+    <!-- バージョン情報・著作権 -->
+    <div id="modal-version" class="modal hidden">
+      <div class="modal-box">
+        <h2>バージョン情報</h2>
+        <p class="modal-text"><span id="ver-app">ぴょんぴょんキャロット</span> <b id="ver-num">v0.0.0</b></p>
+        <p class="modal-text small">&copy; 2026 SERIALGAMES Inc.<br />All rights reserved.</p>
+        <div class="license-box">
+          <div class="license-title">使用ライブラリ</div>
+          <b>three.js</b> — MIT License
+          <pre class="license-text">Copyright &copy; 2010-2024 three.js authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.</pre>
+        </div>
+        <button id="version-close" class="big-btn primary">とじる</button>
       </div>
     </div>
 
