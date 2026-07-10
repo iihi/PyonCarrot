@@ -606,9 +606,11 @@ export class GameScene {
     }
     this.dangerMeshes = [];
     this.dangerTileIds = new Set();
+    if (!cells.length) return; // 掃除だけ(buildStageのクリア時など)は以降を触らない
     const tileAtCell = new Map();
     this.tileMeshes.forEach((tm, i) => {
-      if (tm.alive) tileAtCell.set(this.level.tiles[i].x + ',' + this.level.tiles[i].y, i);
+      const t = this.level.tiles[i]; // 旧メッシュ×新levelのズレに備えてガード
+      if (tm.alive && t) tileAtCell.set(t.x + ',' + t.y, i);
     });
     for (const c of cells) {
       const plane = new THREE.Mesh(
