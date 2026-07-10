@@ -347,6 +347,35 @@ export function landStance(level, alive, fromX, fromY, targetIdx) {
   return landStanceM(level, mask, fromX, fromY, targetIdx);
 }
 
+// 生成用: 農夫に一度も捕まらずにゴールへ着ける手順が存在するか。
+// 実行時の判定と同じく「着地した瞬間に全員が90°回った後の向き(jumps+1)」で捕まる。
+// ゴールへの着地は実行時に捕獲判定より先にクリアになるので常に安全。
+function safeSolutionExists(level) {
+  const n = level.tiles.length;
+  let full = 0;
+  for (let i = 1; i < n; i++) full |= 1 << i;
+  const start = stanceFromTile(level, 0);
+  const failed = new Set();
+  const dfs = (s, m, j) => {
+    if (canJumpXY(level, s.x, s.y, s.h, s.power, level.goal.x, level.goal.y)) return true;
+    const memoKey = s.id + '|' + m + '|' + (j & 3);
+    if (failed.has(memoKey)) return false;
+    for (let i = 0; i < n; i++) {
+      if (!(m & (1 << i))) continue;
+      const t = level.tiles[i];
+      if (!canJumpXY(level, s.x, s.y, s.h, s.power, t.x, t.y)) continue;
+      const { stance: s2, eaten } = landStanceM(level, m, s.x, s.y, i);
+      if (isCaught(level, s2.x, s2.y, j + 1)) continue;
+      let nm = m;
+      for (const e of eaten) nm &= ~(1 << e);
+      if (dfs(s2, nm, j + 1)) return true;
+    }
+    failed.add(memoKey);
+    return false;
+  };
+  return dfs(start, full, 0);
+}
+
 // ---------- 生成 ----------
 export function generate(seed, stage) {
   const rand = mulberry32(mixSeed(seed, stage));
@@ -623,41 +652,54 @@ function tryGenerate(rand, n, seed, stage, heights, relax = false) {
         }
         return { cov, seesStart };
       };
-      // 既に置いた人間と「重なって見える(隣接)」または「同じ向き＆同一直線=視線が重複して無意味」
-      // な配置を避ける。人間は同じ向きに一斉に回るので、同dir同一直線は常に重複する。
-      const okVsExisting = (x, y, d) => {
-        for (const h of hs) {
-          if (Math.max(Math.abs(h.x - x), Math.abs(h.y - y)) < 2) return false;
-          if (h.dir === d && (h.x === x || h.y === y)) return false;
-        }
-        return true;
-      };
-      const used = new Set();
-      const hs = [];
-      for (let k = 0; k < want; k++) {
-        let best = null;
-        let bestCov = 0;
-        for (let tries = 0; tries < 40 && empty.length; tries++) {
-          const c = empty[Math.floor(rand() * empty.length)];
-          if (used.has(key(c.x, c.y))) continue;
-          for (let d = 0; d < 4; d++) {
-            if (!okVsExisting(c.x, c.y, d)) continue;
-            const [dx, dy] = HUMAN_ROT[d];
-            const { cov, seesStart } = scan(c.x, c.y, dx, dy);
-            if (seesStart) continue; // 初期向きでスタートは狙わない
-            if (cov > bestCov) {
-              bestCov = cov;
-              best = { x: c.x, y: c.y, dir: d };
+      // 候補を1組つくる。既に置いた人間と「重なって見える(隣接)」または
+      // 「同じ向き＆同一直線=視線が重複して無意味」な配置は避ける
+      // (人間は同じ向きに一斉に回るので、同dir同一直線は常に重複する)。
+      const buildPlacement = (count) => {
+        const used = new Set();
+        const hs = [];
+        const okVsExisting = (x, y, d) => {
+          for (const h of hs) {
+            if (Math.max(Math.abs(h.x - x), Math.abs(h.y - y)) < 2) return false;
+            if (h.dir === d && (h.x === x || h.y === y)) return false;
+          }
+          return true;
+        };
+        for (let k = 0; k < count; k++) {
+          let best = null;
+          let bestCov = 0;
+          for (let tries = 0; tries < 40 && empty.length; tries++) {
+            const c = empty[Math.floor(rand() * empty.length)];
+            if (used.has(key(c.x, c.y))) continue;
+            for (let d = 0; d < 4; d++) {
+              if (!okVsExisting(c.x, c.y, d)) continue;
+              const [dx, dy] = HUMAN_ROT[d];
+              const { cov, seesStart } = scan(c.x, c.y, dx, dy);
+              if (seesStart) continue; // 初期向きでスタートは狙わない
+              if (cov > bestCov) {
+                bestCov = cov;
+                best = { x: c.x, y: c.y, dir: d };
+              }
             }
           }
+          if (best && bestCov >= 1) {
+            used.add(key(best.x, best.y));
+            hs.push(best);
+          }
         }
-        if (best && bestCov >= 1) {
-          used.add(key(best.x, best.y));
-          hs.push(best);
-        }
+        return hs;
+      };
+      // 「一度も捕まらずにクリアできる」配置だけを採用する。
+      // 何度か試してダメなら人数を1体に減らして再挑戦。
+      for (let attempt = 0; attempt < 24; attempt++) {
+        const hs = buildPlacement(attempt < 16 ? want : 1);
+        if (!hs.length) continue;
+        level.humans = hs;
+        if (safeSolutionExists(level)) break;
+        level.humans = [];
       }
-      level.humans = hs;
     }
+    // 秋は人間必須。捕まらず解ける配置が見つからなければステージごと作り直す
     if (prof.requireHuman && !relax && !level.humans.length) return null;
   }
 
