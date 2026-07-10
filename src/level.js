@@ -623,6 +623,15 @@ function tryGenerate(rand, n, seed, stage, heights, relax = false) {
         }
         return { cov, seesStart };
       };
+      // 既に置いた人間と「重なって見える(隣接)」または「同じ向き＆同一直線=視線が重複して無意味」
+      // な配置を避ける。人間は同じ向きに一斉に回るので、同dir同一直線は常に重複する。
+      const okVsExisting = (x, y, d) => {
+        for (const h of hs) {
+          if (Math.max(Math.abs(h.x - x), Math.abs(h.y - y)) < 2) return false;
+          if (h.dir === d && (h.x === x || h.y === y)) return false;
+        }
+        return true;
+      };
       const used = new Set();
       const hs = [];
       for (let k = 0; k < want; k++) {
@@ -632,6 +641,7 @@ function tryGenerate(rand, n, seed, stage, heights, relax = false) {
           const c = empty[Math.floor(rand() * empty.length)];
           if (used.has(key(c.x, c.y))) continue;
           for (let d = 0; d < 4; d++) {
+            if (!okVsExisting(c.x, c.y, d)) continue;
             const [dx, dy] = HUMAN_ROT[d];
             const { cov, seesStart } = scan(c.x, c.y, dx, dy);
             if (seesStart) continue; // 初期向きでスタートは狙わない
