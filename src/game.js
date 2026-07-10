@@ -257,7 +257,6 @@ export class Game {
     $('btn-sound').onclick = () => {
       this.sfx.setEnabled(!this.sfx.enabled);
       $('btn-sound').classList.toggle('on', this.sfx.enabled);
-      $('btn-sound').textContent = this.sfx.enabled ? '♪' : '×';
       this.sfx.click();
       this._saveSettings();
     };
@@ -714,10 +713,14 @@ export class Game {
     this.stance = landInfo.stance;
     this.curIdx = tile.cart ? -1 : id;
 
-    // 人間に見られている向きの直線上に降りたら、寄ってきてニンジンを全部奪われる(非致死)
+    // 人間はジャンプのたびに90°回る。着地と同時に回って、その「回ったあとの向き」の
+    // 赤いラインにうさぎが重なったら捕まる(非致死=ニンジンを全部奪われる)
+    this.jumps++;
     const caught = caughtBy(this.level, this.stance.x, this.stance.y, this.jumps);
-    this.jumps++; // ジャンプしたので人間は回る
     if (caught >= 0) {
+      // 人間が回って新しい赤ラインが出た瞬間に着地が重なった
+      this.scene.setHumanFacing(this.jumps);
+      this.scene.setDanger(humanDangerCells(this.level, this.jumps));
       const human = this.level.humans[caught];
       await this.scene.humanApproach(human);
       const lost = this.carrots;
@@ -981,6 +984,6 @@ export class Game {
       }
     } catch (e) {}
     $('btn-sound').classList.toggle('on', this.sfx.enabled);
-    $('btn-sound').textContent = this.sfx.enabled ? '♪' : '×';
+    $('btn-sound').textContent = '♪'; // OFF時はCSSで斜め線を重ねる
   }
 }

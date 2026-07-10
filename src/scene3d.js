@@ -55,10 +55,10 @@ export class GameScene {
     this.island = makeIsland(GRID, 'spring');
     this.scene.add(this.island);
 
-    // グリッド線（9x9全面）
-    this.grid = new THREE.GridHelper(GRID, GRID, 0xffffff, 0xffffff);
+    // グリッド線（9x9全面）。白だと冬の雪原で見えないので、全季節で見える濃いめの色に
+    this.grid = new THREE.GridHelper(GRID, GRID, 0x3f5e42, 0x3f5e42);
     this.grid.material.transparent = true;
-    this.grid.material.opacity = 0.22;
+    this.grid.material.opacity = 0.3;
     this.grid.position.y = 0.01;
     this.scene.add(this.grid);
     const gh = GRID / 2;

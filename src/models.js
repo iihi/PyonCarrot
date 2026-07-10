@@ -580,9 +580,9 @@ export function makeTerrain(heights) {
     const lines = new THREE.LineSegments(
       geo,
       new THREE.LineBasicMaterial({
-        color: 0xffffff,
+        color: 0x3f5e42, // 平地グリッドと同じ濃い色(冬でも見える)
         transparent: true,
-        opacity: 0.25,
+        opacity: 0.3,
       })
     );
     g.add(lines);

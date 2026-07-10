@@ -154,6 +154,24 @@ body {
   border-bottom-color: var(--green-dark);
 }
 
+/* サウンドOFF: 音符(♪)に斜めの取り消し線を重ねる */
+#btn-sound {
+  position: relative;
+  overflow: visible;
+}
+#btn-sound:not(.on)::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 26px;
+  height: 3px;
+  border-radius: 2px;
+  background: #e0483b;
+  transform: translate(-50%, -50%) rotate(-45deg);
+  pointer-events: none;
+}
+
 .hud-btn.mini.wide {
   width: auto;
   padding: 8px 12px;
