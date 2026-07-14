@@ -181,6 +181,111 @@ function makeSpring() {
   return { group: g, topY: baseY + h + 0.04 };
 }
 
+// 作業用トロッコ(青メタルの木箱+スポーク車輪)。{ railGroup, cart, floorY } を返す。
+// cart.userData.wheels を回転させて走行感を出す。向きは乗車時にrideCartで回す。
+function makeCart() {
+  const railGroup = new THREE.Group();
+  const cart = new THREE.Group();
+  // 畑(茶)にも草(緑)にも埋もれない青系メタル
+  const wood = mat(0x3f8fd0, { roughness: 0.45, metalness: 0.45 });
+  const woodDark = mat(0x2f6ea8, { roughness: 0.5, metalness: 0.45 });
+  const metal = mat(0xcfe4f2, { roughness: 0.3, metalness: 0.55 });
+  const metalDark = mat(0x24506f, { roughness: 0.4, metalness: 0.5 });
+  const W = 0.56, L = 0.6, H = 0.32, TH = 0.055;
+  const floorY = 0.36;
+
+  // 木の底+四方の壁(開いた箱)
+  cart.add(mesh(new THREE.BoxGeometry(W, TH, L), woodDark, 0, floorY, 0));
+  cart.add(mesh(new THREE.BoxGeometry(W, H, TH), wood, 0, floorY + H / 2, L / 2 - TH / 2));
+  cart.add(mesh(new THREE.BoxGeometry(W, H, TH), wood, 0, floorY + H / 2, -L / 2 + TH / 2));
+  cart.add(mesh(new THREE.BoxGeometry(TH, H, L), wood, W / 2 - TH / 2, floorY + H / 2, 0));
+  cart.add(mesh(new THREE.BoxGeometry(TH, H, L), wood, -W / 2 + TH / 2, floorY + H / 2, 0));
+
+  // 金属の上フチ(4辺)と四隅の柱
+  const rimY = floorY + H;
+  cart.add(mesh(new THREE.BoxGeometry(W + 0.05, 0.055, TH + 0.02), metal, 0, rimY, L / 2 - TH / 2));
+  cart.add(mesh(new THREE.BoxGeometry(W + 0.05, 0.055, TH + 0.02), metal, 0, rimY, -L / 2 + TH / 2));
+  cart.add(mesh(new THREE.BoxGeometry(TH + 0.02, 0.055, L + 0.05), metal, W / 2 - TH / 2, rimY, 0));
+  cart.add(mesh(new THREE.BoxGeometry(TH + 0.02, 0.055, L + 0.05), metal, -W / 2 + TH / 2, rimY, 0));
+  for (const cxs of [-1, 1]) {
+    for (const czs of [-1, 1]) {
+      cart.add(
+        mesh(
+          new THREE.BoxGeometry(0.07, H + 0.05, 0.07),
+          metalDark,
+          cxs * (W / 2 - 0.03),
+          floorY + H / 2,
+          czs * (L / 2 - 0.03)
+        )
+      );
+    }
+  }
+
+  // スポーク車輪×4(グレー・ハブ+スポーク)
+  const wheels = [];
+  const wheelMat = mat(0x717681, { roughness: 0.4, metalness: 0.4 });
+  const spokeMat = mat(0x8b909a, { roughness: 0.4, metalness: 0.4 });
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      const w = new THREE.Group();
+      const tire = mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.045, 12), wheelMat);
+      tire.rotation.z = Math.PI / 2;
+      w.add(tire);
+      const hub = mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.06, 8), metalDark);
+      hub.rotation.z = Math.PI / 2;
+      w.add(hub);
+      for (let a = 0; a < 3; a++) {
+        const spoke = mesh(new THREE.BoxGeometry(0.03, 0.22, 0.02), spokeMat);
+        spoke.rotation.x = (a / 3) * Math.PI;
+        w.add(spoke);
+      }
+      w.position.set(sx * (W / 2 + 0.02), 0.2, sz * (L / 2 - 0.12));
+      wheels.push(w);
+      cart.add(w);
+    }
+  }
+  cart.userData.wheels = wheels;
+  railGroup.add(cart);
+  return { railGroup, cart, floorY };
+}
+
+// 冬のソリ(機能はトロッコと同じ)。赤い反り上がった刃+木のデッキ。
+function makeSled() {
+  const railGroup = new THREE.Group();
+  const cart = new THREE.Group();
+  const wood = mat(0xba7b3e, { roughness: 0.7 });
+  const woodDark = mat(0x8a5a2c, { roughness: 0.7 });
+  const red = mat(0xe23b3b, { roughness: 0.4, metalness: 0.3 });
+  const W = 0.56, L = 0.62, TH = 0.06;
+  const floorY = 0.34;
+
+  // デッキ(板を3枚並べる)
+  for (let i = -1; i <= 1; i++) {
+    cart.add(mesh(new THREE.BoxGeometry(W, TH, L * 0.28), i === 0 ? woodDark : wood, 0, floorY, i * L * 0.33));
+  }
+  // 前後の低い枠(後ろは少し高い背もたれ)
+  cart.add(mesh(new THREE.BoxGeometry(W, 0.12, TH), wood, 0, floorY + 0.09, L / 2 - TH / 2));
+  cart.add(mesh(new THREE.BoxGeometry(W, 0.2, TH), wood, 0, floorY + 0.13, -L / 2 + TH / 2));
+
+  // 左右の赤い刃(前が反り上がる)+デッキとつなぐ支柱
+  const runnerY = 0.14;
+  for (const sx of [-1, 1]) {
+    const runner = new THREE.Group();
+    runner.add(mesh(new THREE.BoxGeometry(0.06, 0.05, L + 0.08), red, 0, runnerY, 0));
+    const tip = mesh(new THREE.BoxGeometry(0.06, 0.05, 0.22), red, 0, runnerY + 0.07, (L + 0.08) / 2 + 0.03);
+    tip.rotation.x = -0.7;
+    runner.add(tip);
+    for (const cz of [-0.22, 0.22]) {
+      runner.add(mesh(new THREE.BoxGeometry(0.05, 0.22, 0.05), woodDark, 0, runnerY + 0.13, cz * L));
+    }
+    runner.position.x = sx * (W / 2 - 0.02);
+    cart.add(runner);
+  }
+  cart.userData.wheels = []; // rideCartの車輪回転に合わせるため空配列
+  railGroup.add(cart);
+  return { railGroup, cart, floorY };
+}
+
 export function makeTile(tile) {
   const g = new THREE.Group();
   const value = tile.value;
@@ -227,81 +332,14 @@ export function makeTile(tile) {
   // 数字バッジと被らないよう、全体を画面の少し下(手前)へずらす
   carrots.position.set(FWD_AXIS.x * 0.1, carrotLift, FWD_AXIS.z * 0.1);
 
-  // トロッコマス: 作業用の木箱トロッコ(真ん中が開いた箱型+金属フチ+スポーク車輪)
-  // 進む向きは「乗ったときの進行方向」なので、向きを示す矢印等は付けない。ニンジンは箱の中に積む。
+  // トロッコ/ソリのマス: 中にニンジンを積む。進む向きは乗車時にrideCartで回す。
   if (tile.cart) {
-    const railGroup = new THREE.Group();
-
-    const cart = new THREE.Group();
-    // 畑(茶)にも草(緑)にも埋もれない青系メタル
-    const wood = mat(0x3f8fd0, { roughness: 0.45, metalness: 0.45 });
-    const woodDark = mat(0x2f6ea8, { roughness: 0.5, metalness: 0.45 });
-    const metal = mat(0xcfe4f2, { roughness: 0.3, metalness: 0.55 });
-    const metalDark = mat(0x24506f, { roughness: 0.4, metalness: 0.5 });
-    const W = 0.56, L = 0.6, H = 0.32, TH = 0.055;
-    const floorY = 0.36;
-
-    // 木の底+四方の壁(開いた箱)
-    cart.add(mesh(new THREE.BoxGeometry(W, TH, L), woodDark, 0, floorY, 0));
-    cart.add(mesh(new THREE.BoxGeometry(W, H, TH), wood, 0, floorY + H / 2, L / 2 - TH / 2));
-    cart.add(mesh(new THREE.BoxGeometry(W, H, TH), wood, 0, floorY + H / 2, -L / 2 + TH / 2));
-    cart.add(mesh(new THREE.BoxGeometry(TH, H, L), wood, W / 2 - TH / 2, floorY + H / 2, 0));
-    cart.add(mesh(new THREE.BoxGeometry(TH, H, L), wood, -W / 2 + TH / 2, floorY + H / 2, 0));
-
-    // 金属の上フチ(4辺)と四隅の柱
-    const rimY = floorY + H;
-    cart.add(mesh(new THREE.BoxGeometry(W + 0.05, 0.055, TH + 0.02), metal, 0, rimY, L / 2 - TH / 2));
-    cart.add(mesh(new THREE.BoxGeometry(W + 0.05, 0.055, TH + 0.02), metal, 0, rimY, -L / 2 + TH / 2));
-    cart.add(mesh(new THREE.BoxGeometry(TH + 0.02, 0.055, L + 0.05), metal, W / 2 - TH / 2, rimY, 0));
-    cart.add(mesh(new THREE.BoxGeometry(TH + 0.02, 0.055, L + 0.05), metal, -W / 2 + TH / 2, rimY, 0));
-    for (const cxs of [-1, 1]) {
-      for (const czs of [-1, 1]) {
-        cart.add(
-          mesh(
-            new THREE.BoxGeometry(0.07, H + 0.05, 0.07),
-            metalDark,
-            cxs * (W / 2 - 0.03),
-            floorY + H / 2,
-            czs * (L / 2 - 0.03)
-          )
-        );
-      }
-    }
-
-    // スポーク車輪×4(グレー・ハブ+スポーク)
-    const wheels = [];
-    const wheelMat = mat(0x717681, { roughness: 0.4, metalness: 0.4 });
-    const spokeMat = mat(0x8b909a, { roughness: 0.4, metalness: 0.4 });
-    for (const sx of [-1, 1]) {
-      for (const sz of [-1, 1]) {
-        const w = new THREE.Group();
-        const tire = mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.045, 12), wheelMat);
-        tire.rotation.z = Math.PI / 2;
-        w.add(tire);
-        const hub = mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.06, 8), metalDark);
-        hub.rotation.z = Math.PI / 2;
-        w.add(hub);
-        for (let a = 0; a < 3; a++) {
-          const spoke = mesh(new THREE.BoxGeometry(0.03, 0.22, 0.02), spokeMat);
-          spoke.rotation.x = (a / 3) * Math.PI;
-          w.add(spoke);
-        }
-        w.position.set(sx * (W / 2 + 0.02), 0.2, sz * (L / 2 - 0.12));
-        wheels.push(w);
-        cart.add(w);
-      }
-    }
-    cart.userData.wheels = wheels;
-    railGroup.add(cart);
-
-    // ニンジンを箱の中に通常サイズで積む
-    carrots.position.set(0, floorY + 0.04, 0);
-    cart.add(carrots);
-
-    // 向きは乗車時に決まる(rideCartで回す)。初期は中立。
-    g.add(railGroup);
-    g.userData.cart = cart;
-    g.userData.railGroup = railGroup;
+    const veh = tile.sled ? makeSled() : makeCart();
+    carrots.position.set(0, veh.floorY + 0.04, 0);
+    veh.cart.add(carrots);
+    g.add(veh.railGroup);
+    g.userData.cart = veh.cart;
+    g.userData.railGroup = veh.railGroup;
   } else {
     g.add(carrots);
   }
@@ -378,6 +416,45 @@ export function makeGoalRabbit() {
   outer.userData.inner = g;
   outer.userData.ears = ears;
   return outer;
+}
+
+// ---------- 人間（畑を見張る農夫。見ている向き＝ローカル+z） ----------
+export function makeHuman() {
+  const g = new THREE.Group();
+  const inner = new THREE.Group();
+  g.add(inner);
+  const skin = mat(0xf1c39c);
+  const shirt = mat(0xd8503f); // 赤いシャツ
+  const overalls = mat(0x37589a); // 青いつなぎ
+  const straw = mat(0xe8c66a); // 麦わら帽子
+  const dark = mat(0x2b2b2b, { roughness: 0.4 });
+
+  // 脚
+  for (const s of [-1, 1]) {
+    inner.add(mesh(new THREE.BoxGeometry(0.16, 0.34, 0.18), overalls, s * 0.11, 0.17, 0));
+  }
+  // 胴(シャツ)＋つなぎの胸当て
+  inner.add(mesh(new THREE.BoxGeometry(0.42, 0.4, 0.28), shirt, 0, 0.56, 0));
+  inner.add(mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), overalls, 0, 0.5, 0.006));
+  // 腕
+  for (const s of [-1, 1]) {
+    const arm = mesh(new THREE.BoxGeometry(0.12, 0.36, 0.14), shirt, s * 0.29, 0.55, 0);
+    arm.rotation.z = s * 0.12;
+    inner.add(arm);
+  }
+  // 首・頭
+  inner.add(mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.06, 6), skin, 0, 0.78, 0));
+  inner.add(mesh(new THREE.SphereGeometry(0.19, 8, 7), skin, 0, 0.94, 0));
+  // 目(顔＝+z 側)
+  for (const s of [-1, 1]) {
+    inner.add(mesh(new THREE.SphereGeometry(0.028, 6, 5), dark, s * 0.07, 0.96, 0.17));
+  }
+  // 麦わら帽子(つば＋山)
+  inner.add(mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.03, 12), straw, 0, 1.06, 0));
+  inner.add(mesh(new THREE.CylinderGeometry(0.15, 0.17, 0.14, 10), straw, 0, 1.13, 0));
+
+  g.userData.inner = inner;
+  return g;
 }
 
 // ---------- ゴール（ピンクウサギ＋花の台座＋旗） ----------
@@ -503,9 +580,9 @@ export function makeTerrain(heights) {
     const lines = new THREE.LineSegments(
       geo,
       new THREE.LineBasicMaterial({
-        color: 0xffffff,
+        color: 0x3f5e42, // 平地グリッドと同じ濃い色(冬でも見える)
         transparent: true,
-        opacity: 0.25,
+        opacity: 0.3,
       })
     );
     g.add(lines);
@@ -513,15 +590,34 @@ export function makeTerrain(heights) {
   return g;
 }
 
+// ---------- 季節ごとの背景色(プログラム生成のプレースホルダ。将来PNGに差し替え可) ----------
+// sky=シーン背景 / fog=遠景フォグ / grass=島の草 / water=水面
+export const SEASON_BG = {
+  spring: { sky: 0xbfe9ff, fog: 0xd6f0ff, grass: 0x86cf5f, water: 0x6fc3e8 },
+  summer: { sky: 0x8fd6ff, fog: 0xbfeaff, grass: 0x57b544, water: 0x2fb2e0 },
+  autumn: { sky: 0xffe3b8, fog: 0xffdcb0, grass: 0xc79f4c, water: 0x66aecb },
+  winter: { sky: 0xdff0ff, fog: 0xecf7ff, grass: 0xeaf3f8, water: 0xa9d6ea },
+};
+
+// 季節ごとの飾り(木・花・岩)の色味
+const SEASON_DECO = {
+  spring: { tree: 0x4d9e4f, trunk: 0x8a5a33, rock: 0xb9c2c9, flowers: [0xff9ec7, 0xffffff, 0xfff05e], snow: false },
+  summer: { tree: 0x2f8f43, trunk: 0x7a4d2b, rock: 0xb9c2c9, flowers: [0xff5e7a, 0xffd23a, 0x59c3ff], snow: false },
+  autumn: { tree: 0xd9702a, trunk: 0x6f4423, rock: 0xb0a48f, flowers: [0xe8632a, 0xf2b13a, 0xc23a3a], snow: false },
+  winter: { tree: 0x3f7d54, trunk: 0x6f5638, rock: 0xd7e3ea, flowers: [0xffffff, 0xcfe8ff, 0xffd9e6], snow: true },
+};
+
 // ---------- 島と背景 ----------
-export function makeIsland(gridSize) {
+export function makeIsland(gridSize, season = 'spring') {
   const g = new THREE.Group();
   const half = gridSize / 2;
+  const bg = SEASON_BG[season] || SEASON_BG.spring;
+  const deco = SEASON_DECO[season] || SEASON_DECO.spring;
 
   // 水面
   const water = new THREE.Mesh(
     new THREE.CircleGeometry(26, 24),
-    new THREE.MeshStandardMaterial({ color: 0x6fc3e8, roughness: 1, flatShading: true })
+    new THREE.MeshStandardMaterial({ color: bg.water, roughness: 1, flatShading: true })
   );
   water.rotation.x = -Math.PI / 2;
   water.position.y = -0.35;
@@ -531,17 +627,18 @@ export function makeIsland(gridSize) {
   // 草の島（ミニウサギが上端の外を歩けるよう広めに）
   const island = new THREE.Mesh(
     new THREE.CylinderGeometry(half + 3.5, half + 4.3, 0.5, 18),
-    mat(0x82ca5c)
+    mat(bg.grass)
   );
   island.position.y = -0.25;
   island.receiveShadow = true;
   g.add(island);
 
   // まわりの飾り（木・花・岩）
-  const treeGreen = mat(0x4d9e4f);
-  const trunk = mat(0x8a5a33);
-  const rockMat = mat(0xb9c2c9);
-  const flowerColors = [0xff8ab5, 0xfff05e, 0xffffff];
+  const treeGreen = mat(deco.tree);
+  const trunk = mat(deco.trunk);
+  const rockMat = mat(deco.rock);
+  const snowMat = mat(0xffffff);
+  const stemMat = mat(0x4d9e4f);
   const rand = mulberryLocal(12345);
   for (let i = 0; i < 26; i++) {
     const ang = rand() * Math.PI * 2;
@@ -554,6 +651,10 @@ export function makeIsland(gridSize) {
       const tr = mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.3, 5), trunk, 0, 0.15, 0);
       const lv = mesh(new THREE.ConeGeometry(0.32, 0.7, 6), treeGreen, 0, 0.7, 0);
       t.add(tr, lv);
+      if (deco.snow) {
+        // 冬は木のてっぺんに雪をのせる
+        t.add(mesh(new THREE.ConeGeometry(0.2, 0.28, 6), snowMat, 0, 0.92, 0));
+      }
       t.position.set(x, 0, z);
       t.scale.setScalar(0.7 + rand() * 0.9);
       g.add(t);
@@ -564,10 +665,10 @@ export function makeIsland(gridSize) {
       g.add(rock);
     } else {
       const f = new THREE.Group();
-      const stem = mesh(new THREE.CylinderGeometry(0.015, 0.02, 0.18, 4), treeGreen, 0, 0.09, 0);
+      const stem = mesh(new THREE.CylinderGeometry(0.015, 0.02, 0.18, 4), stemMat, 0, 0.09, 0);
       const bloom = mesh(
         new THREE.SphereGeometry(0.05, 5, 4),
-        mat(flowerColors[Math.floor(rand() * flowerColors.length)]),
+        mat(deco.flowers[Math.floor(rand() * deco.flowers.length)]),
         0,
         0.2,
         0

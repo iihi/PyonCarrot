@@ -20,16 +20,54 @@ export const MAX_HEIGHT = 3; // 高さレベル0〜3(=段差3段)
 export const SPRING_BONUS = 2; // ジャンプ台で伸びる距離
 export const GOLD_MULT = 5; // 大ニンジンは1本で5本分(獲得 = 本数 × 5)
 
-// ギミックの解禁ステージと出現率・上限
-const GOLD_STAGE = 3;
-const SPRING_STAGE = 4;
-const CART_STAGE = 6;
+// ギミックの出現率・上限
 const P_GOLD = 0.08;
 const P_SPRING = 0.1;
 const P_CART = 0.15;
 const MAX_GOLD = 2;
 const MAX_SPRING = 3;
 const MAX_CARTS = 3;
+
+// ---------- 季節 ----------
+// 1季節=5ステージ: 春(1-5)→夏(6-10)→秋(11-15)→冬(16-20)。21面以降は全部入り。
+// 各季節は単独ギミック(段差と金ニンジンは全季節)。
+export const SEASONS = ['spring', 'summer', 'autumn', 'winter'];
+const SEASON_LEN = 5;
+const ALLIN_STAGE = SEASONS.length * SEASON_LEN + 1; // 21
+
+export function seasonForStage(stage) {
+  if (stage < ALLIN_STAGE) return SEASONS[Math.floor((stage - 1) / SEASON_LEN)];
+  return 'allin';
+}
+
+// 背景の季節。チュートリアル4季節はその季節、21面以降は5面ごとにseedから擬似ランダム
+// (日時ではなくseed由来なのでコードで再現できる=不正対策)。
+export function backgroundSeasonForStage(seed, stage) {
+  const s = seasonForStage(stage);
+  if (s !== 'allin') return s;
+  const block = Math.floor((stage - ALLIN_STAGE) / SEASON_LEN);
+  const r = mulberry32(mixSeed(seed, 90210 + block))();
+  return SEASONS[Math.floor(r * SEASONS.length)];
+}
+
+// その季節で許可するギミック。sledは背景が冬のときトロッコの見た目をソリにする。
+export function seasonProfile(seed, stage) {
+  const s = seasonForStage(stage);
+  const bg = backgroundSeasonForStage(seed, stage);
+  return {
+    season: s,
+    background: bg,
+    allowSpring: s === 'summer' || s === 'allin',
+    allowHuman: s === 'autumn' || s === 'allin',
+    allowCart: s === 'winter' || s === 'allin',
+    allowGold: true,
+    sled: bg === 'winter',
+    // その季節のポイントとなるギミックは毎ステージ最低1つ出す(生成で保証)
+    requireSpring: s === 'summer',
+    requireHuman: s === 'autumn', // 人間はフェーズ2で生成対応
+    requireCart: s === 'winter',
+  };
+}
 
 const DIRS = [
   [1, 0],
@@ -38,16 +76,43 @@ const DIRS = [
   [0, -1],
 ];
 
-// ---------- 難易度カーブ ----------
-// 畑マスが増えると盤面が広がり画面が縮むので、増え方はゆるやかにする(+1/ステージ)
-export function tileCountForStage(stage) {
-  return Math.min(7 + (stage - 1), MAX_TILES);
+// 人間が向く4方向を90°ずつ回す順(1ジャンプごとに +1 で回転)
+export const HUMAN_ROT = [
+  [1, 0],
+  [0, 1],
+  [-1, 0],
+  [0, -1],
+];
+
+// これまでのジャンプ回数 jumps における、人間の向きベクトル
+export function humanFacingVec(human, jumps) {
+  return HUMAN_ROT[(((human.dir + jumps) % 4) + 4) % 4];
 }
 
+// ---------- 難易度カーブ ----------
+// チュートリアル各季節(5面)は最高の約半分でピーク。21面以降は1から段階的に最高へ。
+// (急に難しくならないようにするため)
+export function tileCountForStage(stage) {
+  if (stage < ALLIN_STAGE) {
+    const within = ((stage - 1) % SEASON_LEN) + 1; // 1..5
+    return Math.min(7 + 2 * (within - 1), MAX_TILES); // 7,9,11,13,15(最高30の約半分)
+  }
+  // 全部入り(21面〜)は小さめから始めて緩やかに最大へ
+  return Math.min(8 + (stage - ALLIN_STAGE), MAX_TILES); // 8 → 30(stage 30で30)
+}
+
+// 段差の上限。春は4面〜、夏以降はデフォルトで段差あり。各季節の頂点で最高の約半分。
 export function heightCapForStage(stage) {
-  if (stage < 4) return 0;
-  if (stage < 9) return 1;
-  if (stage < 15) return 2;
+  const s = seasonForStage(stage);
+  const within = ((stage - 1) % SEASON_LEN) + 1; // 1..5
+  if (s === 'spring') return within >= 4 ? 1 : 0; // 春は4面〜
+  if (s === 'summer') return 1; // 夏以降はデフォルトあり
+  if (s === 'autumn') return within >= 3 ? 2 : 1;
+  if (s === 'winter') return within >= 3 ? 2 : 1;
+  // allin: 1 → 2 → 3 と段階的に上げる
+  const k = stage - ALLIN_STAGE;
+  if (k < 4) return 1;
+  if (k < 10) return 2;
   return MAX_HEIGHT;
 }
 
@@ -149,6 +214,65 @@ export function tilePower(tile) {
   return tile.value + (tile.spring ? SPRING_BONUS : 0);
 }
 
+// ---------- 人間ギミック ----------
+// 人間はマス上に立ち、見ている向きの直線上(段差でさえぎられるまで)を監視する。
+// ジャンプ回数 jumps のときに (x,y) が捕獲範囲なら true。
+// (自分の高さより高い地形で視線は止まる。そのマス自身が高い場合も見えない=捕まらない)
+// 1人の人間 hu が jumps 時点で (x,y) を視認しているか
+function humanSeesCell(level, hu, x, y, jumps) {
+  const h = level.heights;
+  const [dx, dy] = humanFacingVec(hu, jumps);
+  if (dx !== 0) {
+    if (y !== hu.y || Math.sign(x - hu.x) !== dx) return false;
+  } else {
+    if (x !== hu.x || Math.sign(y - hu.y) !== dy) return false;
+  }
+  const hh = h[hu.x][hu.y];
+  let cx = hu.x + dx;
+  let cy = hu.y + dy;
+  while (cx >= 0 && cy >= 0 && cx < GRID && cy < GRID) {
+    if (h[cx][cy] > hh) return false; // 高い地形で視線が止まる
+    if (cx === x && cy === y) return true;
+    cx += dx;
+    cy += dy;
+  }
+  return false;
+}
+
+export function isCaught(level, x, y, jumps) {
+  return caughtBy(level, x, y, jumps) >= 0;
+}
+
+// (x,y) を捕まえる人間の index。いなければ -1。
+export function caughtBy(level, x, y, jumps) {
+  const humans = level.humans;
+  if (!humans || !humans.length) return -1;
+  for (let i = 0; i < humans.length; i++) {
+    if (humanSeesCell(level, humans[i], x, y, jumps)) return i;
+  }
+  return -1;
+}
+
+// いま(ジャンプ回数 jumps)の危険マス一覧(赤表示用)
+export function humanDangerCells(level, jumps) {
+  const res = [];
+  if (!level.humans || !level.humans.length) return res;
+  const h = level.heights;
+  for (const hu of level.humans) {
+    const [dx, dy] = humanFacingVec(hu, jumps);
+    const hh = h[hu.x][hu.y];
+    let cx = hu.x + dx;
+    let cy = hu.y + dy;
+    while (cx >= 0 && cy >= 0 && cx < GRID && cy < GRID) {
+      if (h[cx][cy] > hh) break;
+      res.push({ x: cx, y: cy });
+      cx += dx;
+      cy += dy;
+    }
+  }
+  return res;
+}
+
 // ---------- スタンス(ウサギの立ち位置と次のジャンプ力) ----------
 // { x, y, h(地形高さ), power(次のジャンプ力), id(メモ用キー) }
 export function stanceFromTile(level, idx) {
@@ -223,32 +347,84 @@ export function landStance(level, alive, fromX, fromY, targetIdx) {
   return landStanceM(level, mask, fromX, fromY, targetIdx);
 }
 
+// 生成用: 農夫に一度も捕まらずにゴールへ着ける手順が存在するか。
+// 実行時の判定と同じく「着地した瞬間に全員が90°回った後の向き(jumps+1)」で捕まる。
+// ゴールへの着地は実行時に捕獲判定より先にクリアになるので常に安全。
+function safeSolutionExists(level) {
+  const n = level.tiles.length;
+  let full = 0;
+  for (let i = 1; i < n; i++) full |= 1 << i;
+  const start = stanceFromTile(level, 0);
+  const failed = new Set();
+  const dfs = (s, m, j) => {
+    if (canJumpXY(level, s.x, s.y, s.h, s.power, level.goal.x, level.goal.y)) return true;
+    const memoKey = s.id + '|' + m + '|' + (j & 3);
+    if (failed.has(memoKey)) return false;
+    for (let i = 0; i < n; i++) {
+      if (!(m & (1 << i))) continue;
+      const t = level.tiles[i];
+      if (!canJumpXY(level, s.x, s.y, s.h, s.power, t.x, t.y)) continue;
+      const { stance: s2, eaten } = landStanceM(level, m, s.x, s.y, i);
+      if (isCaught(level, s2.x, s2.y, j + 1)) continue;
+      let nm = m;
+      for (const e of eaten) nm &= ~(1 << e);
+      if (dfs(s2, nm, j + 1)) return true;
+    }
+    failed.add(memoKey);
+    return false;
+  };
+  return dfs(start, full, 0);
+}
+
 // ---------- 生成 ----------
 export function generate(seed, stage) {
   const rand = mulberry32(mixSeed(seed, stage));
   let n = tileCountForStage(stage);
   const cap = heightCapForStage(stage);
+  const prof = seasonProfile(seed, stage);
 
-  for (let attempt = 0; attempt < 500; attempt++) {
+  for (let attempt = 0; attempt < 800; attempt++) {
     const heights = genTerrain(rand, stage, cap);
     const level = tryGenerate(rand, n, seed, stage, heights);
     if (level) {
+      // その季節のポイントギミックが1つも無いステージは作り直す
+      // (人間の必須化・安全ルート保証は tryGenerate 側で担保)
+      const okSpring = !prof.requireSpring || level.tiles.some((t) => t.spring);
+      const okCart = !prof.requireCart || level.tiles.some((t) => t.cart);
+      if (okSpring && okCart) {
+        level.season = seasonForStage(stage);
+        level.background = backgroundSeasonForStage(seed, stage);
+        level.minMoves = computeMinMoves(level);
+        return level;
+      }
+    }
+    if (attempt > 550 && n > 8) n--;
+  }
+  // 保険: 通常生成が全滅しても、平地・ギミック無しで必ず1つ作る(ゲームのフリーズ防止)
+  for (let attempt = 0; attempt < 400; attempt++) {
+    const heights = genTerrain(rand, 1, 0); // 平地
+    const nn = Math.max(6, n - Math.floor(attempt / 50));
+    const level = tryGenerate(rand, nn, seed, stage, heights, true);
+    if (level) {
+      level.season = seasonForStage(stage);
+      level.background = backgroundSeasonForStage(seed, stage);
       level.minMoves = computeMinMoves(level);
       return level;
     }
-    if (attempt > 350 && n > 8) n--;
   }
   throw new Error('stage generation failed');
 }
 
-function tryGenerate(rand, n, seed, stage, heights) {
+function tryGenerate(rand, n, seed, stage, heights, relax = false) {
   const occ = new Set();
   const key = (x, y) => x * 16 + y;
   const inGrid = (x, y) => x >= 0 && y >= 0 && x < GRID && y < GRID;
 
-  const pGold = stage >= GOLD_STAGE ? P_GOLD : 0;
-  const pSpring = stage >= SPRING_STAGE ? P_SPRING : 0;
-  const pCart = stage >= CART_STAGE ? P_CART : 0;
+  const prof = seasonProfile(seed, stage);
+  // relax(保険生成)ではギミック・人間を一切入れず、素直に解ける平地ステージにする
+  const pGold = relax ? 0 : prof.allowGold ? P_GOLD : 0;
+  const pSpring = relax ? 0 : prof.allowSpring ? (prof.requireSpring ? 0.35 : P_SPRING) : 0;
+  const pCart = relax ? 0 : prof.allowCart ? (prof.requireCart ? 0.4 : P_CART) : 0;
   let golds = 0;
   let springs = 0;
   let carts = 0;
@@ -350,7 +526,8 @@ function tryGenerate(rand, n, seed, stage, heights) {
         const ny2 = syp + o.dy;
         if (!inGrid(nx2, ny2) || heights[nx2][ny2] !== hc) stoppedAtWall = true;
       }
-      const corridorOk = stoppedAtWall && corridor.length >= 1;
+      // 2マス以上走って壁で止まる配置だけ採用(乗った瞬間に大破して効果が薄いのを防ぐ)
+      const corridorOk = stoppedAtWall && corridor.length >= 2;
       const corridorSet = new Set(corridor);
       // 停止セルSから、数字p(1〜3)で行ける次マスTの候補を集める(線路上は除外)
       const landOpts = [];
@@ -374,7 +551,7 @@ function tryGenerate(rand, n, seed, stage, heights) {
         cur.value = o.need;
         // 線路を占有して将来マスが割り込まないようにする(停止位置を固定)
         for (const c of corridor) occ.add(c);
-        tiles.push({ x: cx, y: cy, value: lo.p, cart: true, rail: [o.dx, o.dy] });
+        tiles.push({ x: cx, y: cy, value: lo.p, cart: true, rail: [o.dx, o.dy], sled: prof.sled });
         occ.add(key(cx, cy));
         const landTile = { x: lo.tx, y: lo.ty, value: 0 };
         rollFlags(landTile);
@@ -397,11 +574,141 @@ function tryGenerate(rand, n, seed, stage, heights) {
   }
   if (!goal) return null;
 
-  return { seed, stage, tiles, goal, heights, count: tiles.length };
+  // 段差は「畑のかたまり(bbox+1)の範囲」だけ残し、そこから離れた段差は平らにする。
+  // 空の段差はOK(畑と同じ場所に段差があるのは自然)。畑と別の場所に段差だけ広がって
+  // 一切使われない、という状態だけを防ぐ。トロッコの停止壁も残す(高さで止まるため)。
+  // (平地ステージでは heights が全て0なので何も起きない)
+  {
+    let minX = GRID, maxX = 0, minY = GRID, maxY = 0;
+    for (const t of tiles) {
+      minX = Math.min(minX, t.x); maxX = Math.max(maxX, t.x);
+      minY = Math.min(minY, t.y); maxY = Math.max(maxY, t.y);
+    }
+    minX = Math.min(minX, goal.x); maxX = Math.max(maxX, goal.x);
+    minY = Math.min(minY, goal.y); maxY = Math.max(maxY, goal.y);
+    const x0 = Math.max(0, minX - 1), x1 = Math.min(GRID - 1, maxX + 1);
+    const y0 = Math.max(0, minY - 1), y1 = Math.min(GRID - 1, maxY + 1);
+    const wall = new Set();
+    for (const t of tiles) {
+      if (!t.cart) continue;
+      const [dx, dy] = t.rail;
+      let x = t.x;
+      let y = t.y;
+      while (occ.has(key(x + dx, y + dy))) {
+        x += dx;
+        y += dy;
+      }
+      const wx = x + dx;
+      const wy = y + dy;
+      if (wx >= 0 && wy >= 0 && wx < GRID && wy < GRID) wall.add(key(wx, wy));
+    }
+    for (let x = 0; x < GRID; x++) {
+      for (let y = 0; y < GRID; y++) {
+        const inArea = x >= x0 && x <= x1 && y >= y0 && y <= y1;
+        if (!inArea && !occ.has(key(x, y)) && !wall.has(key(x, y))) heights[x][y] = 0;
+      }
+    }
+  }
+
+  const level = { seed, stage, tiles, goal, heights, count: tiles.length, humans: [] };
+
+  // 人間の配置(捕獲は非致死=ニンジンを奪うだけなので解の検証は不要)。
+  // 畑のかたまりの近くに置き、初期向きで「畑が視線に入る」有効な向きにする(スタートは狙わない)。
+  if (prof.allowHuman && !relax) {
+    const want =
+      prof.season === 'autumn'
+        ? tiles.length >= 12
+          ? 2
+          : 1
+        : (rand() < 0.6 ? 1 : 0) + (rand() < 0.25 ? 1 : 0);
+    if (want > 0) {
+      let minX = GRID, maxX = 0, minY = GRID, maxY = 0;
+      for (const t of tiles) {
+        minX = Math.min(minX, t.x); maxX = Math.max(maxX, t.x);
+        minY = Math.min(minY, t.y); maxY = Math.max(maxY, t.y);
+      }
+      minX = Math.min(minX, goal.x); maxX = Math.max(maxX, goal.x);
+      minY = Math.min(minY, goal.y); maxY = Math.max(maxY, goal.y);
+      const x0 = Math.max(0, minX - 1), x1 = Math.min(GRID - 1, maxX + 1);
+      const y0 = Math.max(0, minY - 1), y1 = Math.min(GRID - 1, maxY + 1);
+      const empty = [];
+      for (let x = x0; x <= x1; x++) {
+        for (let y = y0; y <= y1; y++) {
+          if (occ.has(key(x, y))) continue;
+          if (x === goal.x && y === goal.y) continue;
+          empty.push({ x, y });
+        }
+      }
+      // (hx,hy)から向き(dx,dy)の視線に入る畑の数と、スタートを見てしまうか
+      const scan = (hx, hy, dx, dy) => {
+        const hh = heights[hx][hy];
+        let cx = hx + dx, cy = hy + dy, cov = 0, seesStart = false;
+        while (cx >= 0 && cy >= 0 && cx < GRID && cy < GRID) {
+          if (heights[cx][cy] > hh) break;
+          if (tiles.some((t) => t.x === cx && t.y === cy)) cov++;
+          if (cx === tiles[0].x && cy === tiles[0].y) seesStart = true;
+          cx += dx;
+          cy += dy;
+        }
+        return { cov, seesStart };
+      };
+      // 候補を1組つくる。既に置いた人間と「重なって見える(隣接)」または
+      // 「同じ向き＆同一直線=視線が重複して無意味」な配置は避ける
+      // (人間は同じ向きに一斉に回るので、同dir同一直線は常に重複する)。
+      const buildPlacement = (count) => {
+        const used = new Set();
+        const hs = [];
+        const okVsExisting = (x, y, d) => {
+          for (const h of hs) {
+            if (Math.max(Math.abs(h.x - x), Math.abs(h.y - y)) < 2) return false;
+            if (h.dir === d && (h.x === x || h.y === y)) return false;
+          }
+          return true;
+        };
+        for (let k = 0; k < count; k++) {
+          let best = null;
+          let bestCov = 0;
+          for (let tries = 0; tries < 40 && empty.length; tries++) {
+            const c = empty[Math.floor(rand() * empty.length)];
+            if (used.has(key(c.x, c.y))) continue;
+            for (let d = 0; d < 4; d++) {
+              if (!okVsExisting(c.x, c.y, d)) continue;
+              const [dx, dy] = HUMAN_ROT[d];
+              const { cov, seesStart } = scan(c.x, c.y, dx, dy);
+              if (seesStart) continue; // 初期向きでスタートは狙わない
+              if (cov > bestCov) {
+                bestCov = cov;
+                best = { x: c.x, y: c.y, dir: d };
+              }
+            }
+          }
+          if (best && bestCov >= 1) {
+            used.add(key(best.x, best.y));
+            hs.push(best);
+          }
+        }
+        return hs;
+      };
+      // 「一度も捕まらずにクリアできる」配置だけを採用する。
+      // 何度か試してダメなら人数を1体に減らして再挑戦。
+      for (let attempt = 0; attempt < 24; attempt++) {
+        const hs = buildPlacement(attempt < 16 ? want : 1);
+        if (!hs.length) continue;
+        level.humans = hs;
+        if (safeSolutionExists(level)) break;
+        level.humans = [];
+      }
+    }
+    // 秋は人間必須。捕まらず解ける配置が見つからなければステージごと作り直す
+    if (prof.requireHuman && !relax && !level.humans.length) return null;
+  }
+
+  return level;
 }
 
 // ---------- 最短手数(スピードボーナス用のBFS) ----------
 export function computeMinMoves(level) {
+  // 人間の捕獲は非致死(ニンジンを奪うだけで手数は消費しない)ため、最短手数は人間を無視して計算する
   const n = level.tiles.length;
   const full = (1 << n) - 1;
   const start = stanceFromTile(level, 0);
@@ -452,9 +759,10 @@ export function reachableFrom(level, alive, stance) {
   return res;
 }
 
-// ---------- ソルバー(ヒント用) ----------
+// ---------- ソルバー(デバッグのオートクリア用) ----------
 // 1) ここから全マス回収してゴール(パーフェクト)がまだ可能ならその一手
 // 2) 不可能なら、とにかくゴールへ着けるルートの一手
+// (人間の捕獲は非致死なので手順探索では無視する)
 export function findSolution(level, alive, stance) {
   const n = level.tiles.length;
   let mask = 0;

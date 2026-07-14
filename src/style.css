@@ -154,6 +154,24 @@ body {
   border-bottom-color: var(--green-dark);
 }
 
+/* サウンドOFF: 音符(♪)に斜めの取り消し線を重ねる */
+#btn-sound {
+  position: relative;
+  overflow: visible;
+}
+#btn-sound:not(.on)::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 26px;
+  height: 3px;
+  border-radius: 2px;
+  background: #e0483b;
+  transform: translate(-50%, -50%) rotate(-45deg);
+  pointer-events: none;
+}
+
 .hud-btn.mini.wide {
   width: auto;
   padding: 8px 12px;
@@ -356,6 +374,60 @@ body {
   width: min(78%, 300px);
 }
 
+/* タイトル下部の著作権とバージョン情報 */
+.title-footer {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.title-copy {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(60, 80, 50, 0.7);
+}
+.title-ver-btn {
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(60, 80, 50, 0.6);
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+.title-ver-btn:active {
+  opacity: 0.6;
+}
+
+/* ライセンス表示 */
+.license-box {
+  text-align: left;
+  font-size: 12px;
+  color: var(--brown);
+  background: rgba(255, 255, 255, 0.55);
+  border-radius: 12px;
+  padding: 10px 12px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.license-title {
+  font-weight: 700;
+  font-size: 11px;
+  opacity: 0.7;
+  margin-bottom: 4px;
+}
+.license-text {
+  margin-top: 6px;
+  font-family: inherit;
+  font-size: 10px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  opacity: 0.85;
+}
+
 .title-note {
   font-size: 12px;
   color: rgba(60, 80, 50, 0.75);
@@ -420,6 +492,10 @@ body {
   gap: 12px;
   text-align: center;
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
+  /* 背の低い端末で画面からはみ出さない(中身がスクロールし、閉じるボタンに届く) */
+  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
 }
 
 .modal-box h2 {
@@ -442,6 +518,41 @@ body {
   opacity: 0.8;
 }
 
+/* 季節の導入説明 */
+.season-box {
+  background: var(--cream);
+  border: 5px solid var(--season-color, #7c5cff);
+  border-radius: 24px;
+  padding: 26px 22px;
+  width: min(100%, 340px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.32);
+}
+.season-emoji {
+  font-size: 60px;
+  line-height: 1;
+  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.18));
+}
+.season-name {
+  color: var(--season-color, #7c5cff);
+  font-size: 30px;
+  margin: -4px 0 2px;
+}
+.season-text {
+  color: var(--brown);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.6;
+}
+.season-box .big-btn.primary {
+  margin-top: 6px;
+  background: var(--season-color, #7c5cff);
+}
+
 .help-list {
   text-align: left;
   color: var(--brown);
@@ -453,6 +564,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  /* 縦が足りない端末ではリストだけスクロールして「とじる」は常に見える */
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .code-row {
