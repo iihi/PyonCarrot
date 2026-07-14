@@ -101,7 +101,7 @@ export function makeRabbit() {
 }
 
 // ---------- ニンジン1本 ----------
-function makeCarrot(scale = 1, golden = false) {
+export function makeCarrot(scale = 1, golden = false) {
   const g = new THREE.Group();
   const orange = golden
     ? mat(0xffd24a, { emissive: 0x8a6a00, emissiveIntensity: 0.45, roughness: 0.45 })
@@ -153,7 +153,7 @@ const CARROT_LAYOUT = {
 };
 
 // コイルバネ(ジャンプ台)。土台いっぱいの大きな螺旋+天板。金属光沢のシルバー。
-function makeSpring() {
+export function makeSpring() {
   const g = new THREE.Group();
   // コイルは明るい光沢シルバー、上下の皿は一段濃いシルバー
   const coilMat = mat(0xe2e7ee, { roughness: 0.22, metalness: 0.75 });
@@ -183,7 +183,7 @@ function makeSpring() {
 
 // 作業用トロッコ(青メタルの木箱+スポーク車輪)。{ railGroup, cart, floorY } を返す。
 // cart.userData.wheels を回転させて走行感を出す。向きは乗車時にrideCartで回す。
-function makeCart() {
+export function makeCart() {
   const railGroup = new THREE.Group();
   const cart = new THREE.Group();
   // 畑(茶)にも草(緑)にも埋もれない青系メタル
@@ -250,7 +250,7 @@ function makeCart() {
 }
 
 // 冬のソリ(機能はトロッコと同じ)。赤い反り上がった刃+木のデッキ。
-function makeSled() {
+export function makeSled() {
   const railGroup = new THREE.Group();
   const cart = new THREE.Group();
   const wood = mat(0xba7b3e, { roughness: 0.7 });
@@ -286,26 +286,19 @@ function makeSled() {
   return { railGroup, cart, floorY };
 }
 
+// 畑マスの土台（土の山＋上面）。ニンジンやジャンプ台はこの上に乗る。
+export function makeMound() {
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.CylinderGeometry(0.4, 0.5, 0.18, 7), mat(0x9c6b45), 0, 0.09, 0));
+  g.add(mesh(new THREE.CylinderGeometry(0.38, 0.41, 0.05, 7), mat(0xb98a5e), 0, 0.19, 0));
+  return g;
+}
+
 export function makeTile(tile) {
   const g = new THREE.Group();
   const value = tile.value;
 
-  const mound = mesh(
-    new THREE.CylinderGeometry(0.4, 0.5, 0.18, 7),
-    mat(0x9c6b45),
-    0,
-    0.09,
-    0
-  );
-  g.add(mound);
-  const top = mesh(
-    new THREE.CylinderGeometry(0.38, 0.41, 0.05, 7),
-    mat(0xb98a5e),
-    0,
-    0.19,
-    0
-  );
-  g.add(top);
+  g.add(makeMound());
 
   // ジャンプ台: 土台の上に赤いコイルバネ+天板。ニンジンは天板の上に乗る
   let carrotLift = 0;
