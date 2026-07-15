@@ -522,23 +522,28 @@ export function makeGoal() {
 }
 
 // ---------- 段差地形（段々畑） ----------
-// 高さレベルごとに草の明るさを一段ずつ変えて、パッと見で段数が分かるようにする
-// (島の草 0x82ca5c → 1段 → 2段 → 3段 と上がるほど明るい緑)
-// 島の草(0x82ca5c)から一段ずつはっきり明るく＆黄みを増やして、段数を見分けられるように
+// 高さレベルごとに色を一段ずつ変えて、パッと見で段数が分かるようにする。
+// 通常季は緑(上るほど明るい黄緑)＋茶の側面。冬は雪＝白基調で、高さが上がるほど
+// 少しずつ青(氷河色)を濃くする。側面も雪色にする(冬は盛り上がりも雪、というFB対応)。
 const TERRACE_TOP = [0, 0x9ad35f, 0xbfe27f, 0xe2f0a2];
 const TERRACE_SIDE = 0x8a5a30;
+// 冬(氷河)パレット: 上面は白→薄氷青→氷河青、側面は影になった氷色
+const TERRACE_TOP_WINTER = [0, 0xd6ebf8, 0xbfe0f4, 0x8fc7ec];
+const TERRACE_SIDE_WINTER = 0xabcde2;
 
-export function makeTerrain(heights) {
+export function makeTerrain(heights, season = 'spring') {
   const g = new THREE.Group();
   const c = (GRID - 1) / 2;
-  const sideMat = mat(TERRACE_SIDE);
+  const winter = season === 'winter';
+  const topPalette = winter ? TERRACE_TOP_WINTER : TERRACE_TOP;
+  const sideMat = mat(winter ? TERRACE_SIDE_WINTER : TERRACE_SIDE);
   const gridVerts = [];
   for (let x = 0; x < GRID; x++) {
     for (let y = 0; y < GRID; y++) {
       const lvl = heights[x][y];
       if (!lvl) continue;
       const h = lvl * HSTEP;
-      const topMat = mat(TERRACE_TOP[Math.min(lvl, TERRACE_TOP.length - 1)]);
+      const topMat = mat(topPalette[Math.min(lvl, topPalette.length - 1)]);
       // 面ごとのマテリアル: [+x, -x, +y(上面), -y, +z, -z]
       const box = new THREE.Mesh(new THREE.BoxGeometry(1, h, 1), [
         sideMat,

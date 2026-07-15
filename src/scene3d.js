@@ -182,7 +182,7 @@ export class GameScene {
         }
       });
     }
-    this.terrain = makeTerrain(level.heights);
+    this.terrain = makeTerrain(level.heights, level.background || level.season || 'spring');
     this.scene.add(this.terrain);
 
     this.onSpring = false;
