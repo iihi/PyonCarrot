@@ -498,6 +498,27 @@ export class GameScene {
       this.worldPos(this.level.goal.x, this.level.goal.y),
       ...(this.level.humans || []).map((h) => this.worldPos(h.x, h.y)),
     ];
+    // トロッコ/ソリはレール方向へ運ばれる。停止セルが空きマスでタイル範囲の外だと
+    // 乗ったときにウサギが画面外に出てしまうので、停止セルも画面に含める。
+    const hd = this.level.heights;
+    for (const t of this.level.tiles) {
+      if (!t.cart || !t.rail || !hd) continue;
+      const [rx, ry] = t.rail;
+      const h0 = hd[t.x][t.y];
+      let x = t.x;
+      let y = t.y;
+      let guard = 0;
+      while (guard++ < GRID) {
+        const nx = x + rx;
+        const ny = y + ry;
+        if (nx < 0 || ny < 0 || nx >= GRID || ny >= GRID) break;
+        if (hd[nx][ny] !== h0) break;
+        if (this.level.tiles.some((o) => o !== t && o.x === nx && o.y === ny)) break;
+        x = nx;
+        y = ny;
+      }
+      pts.push(this.worldPos(x, y));
+    }
     const box = new THREE.Box3();
     pts.forEach((p) => box.expandByPoint(p));
     const center = box.getCenter(new THREE.Vector3());
