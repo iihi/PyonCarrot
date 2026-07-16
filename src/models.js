@@ -307,7 +307,31 @@ export function makeWhirl() {
     ring.position.y = 0.14 + t * 1.0;
     spin.add(ring);
   }
+  // 風に巻かれて舞う木の葉(spinの子なので漏斗と一緒に回る。ひらひらは_frameで)
+  const leafCols = [0xe8632a, 0xf2b13a, 0xc23a3a, 0xff9a3f, 0xd9814f];
+  const lrand = mulberryLocal(1717);
+  const leaves = [];
+  for (let i = 0; i < 10; i++) {
+    const t = lrand();
+    const r = 0.14 + t * 0.3;
+    const a = lrand() * Math.PI * 2;
+    const leaf = mesh(
+      new THREE.CircleGeometry(0.08 + lrand() * 0.05, 5),
+      new THREE.MeshStandardMaterial({
+        color: leafCols[i % leafCols.length],
+        flatShading: true,
+        side: THREE.DoubleSide,
+      }),
+      Math.cos(a) * r,
+      0.18 + lrand() * 0.95,
+      Math.sin(a) * r
+    );
+    leaf.rotation.set(lrand() * Math.PI, lrand() * Math.PI, lrand() * Math.PI);
+    spin.add(leaf);
+    leaves.push(leaf);
+  }
   g.userData.spin = spin;
+  g.userData.leaves = leaves;
   return g;
 }
 
@@ -420,8 +444,15 @@ export function makeTile(tile) {
   const g = new THREE.Group();
   const value = tile.value;
 
-  // 落ち葉マス(つむじ風の対)は土台を落ち葉の山に差し替える(機能は同じ)
-  g.add(tile.leaf ? makeLeafBase() : makeMound());
+  // 落ち葉マス(つむじ風の対)は「普通の土台の上に落ち葉が積もっている」2層構造。
+  // つむじ風が着くと落ち葉(leafPile)が吹き飛んで、下から普通の畑マスが現れる。
+  g.add(makeMound());
+  if (tile.leaf) {
+    const pile = makeLeafBase();
+    pile.scale.set(1.06, 1.15, 1.06); // 土台をしっかり覆う
+    g.userData.leafPile = pile;
+    g.add(pile);
+  }
 
   // ジャンプ台: 土台の上に赤いコイルバネ+天板。ニンジンは天板の上に乗る
   let carrotLift = 0;

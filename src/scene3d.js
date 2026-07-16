@@ -598,7 +598,14 @@ export class GameScene {
       if (spin) spin.rotation.y += 0.35; // 飛び去りながら勢いよく回る
       const fade = Math.max(0, 1 - k * 1.15);
       g.traverse((o) => {
-        if (o.material && o.material.transparent) o.material.opacity = 0.6 * fade;
+        if (!o.material) return;
+        const m = o.material;
+        // 初回に元の不透明度を控えて、リングも中の葉もまとめてフェード
+        if (m.userData.baseOp === undefined) {
+          m.userData.baseOp = m.transparent ? m.opacity : 1;
+          m.transparent = true;
+        }
+        m.opacity = m.userData.baseOp * fade;
       });
     }, () => {
       wt.alive = false;
@@ -637,7 +644,9 @@ export class GameScene {
         this.rabbit.position.copy(p1);
         this.rabbit.rotation.y = Math.PI / 4;
         this.rabbit.scale.setScalar(1);
-        // うさぎを落としたら、風はそのまま画面外へ飛び去る(待たない)
+        // うさぎを落とすと、落ち葉が舞い散ってマスが元の畑に戻り、
+        // 風はそのまま画面外へ飛び去る(どちらも待たない)
+        this._blowLeaves(leafIdx);
         this._whirlExit(whirlIdx);
         resolve();
       }, 'rabbit');
@@ -647,6 +656,62 @@ export class GameScene {
   // 落ち葉マスに直接乗ったとき: 対のつむじ風が使えなくなり、画面外へ飛び去る
   whirlFlee(whirlIdx) {
     this._whirlExit(whirlIdx, 0.15);
+  }
+
+  // つむじ風がうさぎを落とした瞬間: 落ち葉マスの葉が舞い散り、
+  // 積もっていた落ち葉が吹き飛んで下から普通の畑マスが現れる
+  _blowLeaves(idx) {
+    const tm = this.tileMeshes[idx];
+    if (!tm) return;
+    const wp = new THREE.Vector3();
+    tm.group.getWorldPosition(wp);
+
+    // 舞い散る葉(外へ渦を巻きながら飛んで消える)
+    const cols = [0xe8632a, 0xf2b13a, 0xc23a3a, 0xff9a3f, 0xd9814f];
+    for (let i = 0; i < 14; i++) {
+      const m = new THREE.Mesh(
+        new THREE.CircleGeometry(0.05 + Math.random() * 0.05, 5),
+        new THREE.MeshStandardMaterial({
+          color: cols[i % cols.length],
+          flatShading: true,
+          side: THREE.DoubleSide,
+          transparent: true,
+        })
+      );
+      m.position.set(wp.x, wp.y + 0.22, wp.z);
+      this.scene.add(m);
+      this._fx.add(m);
+      const ang0 = (i / 14) * Math.PI * 2 + Math.random() * 0.5;
+      const sp = 0.7 + Math.random() * 1.1;
+      const vy = 1.0 + Math.random() * 1.2;
+      const swirl = 2.2 + Math.random() * 1.6; // 渦を巻く回り込み
+      const rx = (Math.random() - 0.5) * 1.4;
+      const rz = (Math.random() - 0.5) * 1.4;
+      this.tween(0.8 + Math.random() * 0.4, i * 0.01, (t) => t, (k) => {
+        const ang = ang0 + swirl * k;
+        const r = sp * k;
+        m.position.set(
+          wp.x + Math.cos(ang) * r,
+          wp.y + 0.22 + vy * k * (1 - 0.55 * k),
+          wp.z + Math.sin(ang) * r
+        );
+        m.rotation.x += rx * 0.25;
+        m.rotation.z += rz * 0.25;
+        m.material.opacity = 1 - k * k;
+      }, () => this._removeFx(m));
+    }
+
+    // 積もっていた落ち葉の山は吹き飛んで消える(下の畑マスが現れる)
+    const pile = tm.group.userData.leafPile;
+    if (pile && pile.visible) {
+      const s0 = pile.scale.x;
+      this.tween(0.32, 0.05, easeOut, (k) => {
+        pile.scale.setScalar(Math.max(0.01, s0 * (1 - k)));
+        pile.position.y = 0.18 * k;
+      }, () => {
+        pile.visible = false;
+      }, `leafpile${idx}`);
+    }
   }
 
   setNumbersVisible(v) {
@@ -1164,11 +1229,21 @@ export class GameScene {
       t.group.scale.y = 0.94 + 0.1 * b;
     }
 
-    // つむじ風マスは常にグルグル回す
+    // つむじ風マスは常にグルグル回す(中の木の葉はひらひら舞う)
     for (const t of this.tileMeshes) {
       if (!t.whirl || !t.alive || !t.group.visible) continue;
       const spin = t.group.userData.spin;
       if (spin) spin.rotation.y += dt * 6;
+      const leaves = t.group.userData.leaves;
+      if (leaves) {
+        for (let i = 0; i < leaves.length; i++) {
+          const lf = leaves[i];
+          lf.rotation.x += dt * (3 + (i % 3));
+          lf.rotation.z += dt * (2 + (i % 2) * 2.5);
+          // ふわふわ上下(葉ごとに位相をずらす)
+          lf.position.y += Math.sin(this.time * 2.6 + i * 1.7) * dt * 0.12;
+        }
+      }
     }
 
     // 極小ウサギがゆっくり行き来する（にぎやかし）
