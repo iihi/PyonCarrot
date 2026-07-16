@@ -12,6 +12,7 @@ import {
 } from './level.js';
 import { GameScene } from './scene3d.js';
 import { Sfx } from './sfx.js';
+import { TUTORIAL_STEPS } from './tutorial.js';
 
 const SAVE_KEY = 'pyoncarrot_save_v1';
 
@@ -146,7 +147,21 @@ export class Game {
   _bindUI() {
     $('btn-start').onclick = () => {
       this.sfx.click();
-      this.newGame();
+      // 初回だけチュートリアルを先に通す(完走/スキップで以降は出ない)
+      let seen = false;
+      try {
+        seen = !!localStorage.getItem(SAVE_KEY + '_tut_seen');
+      } catch (e) {}
+      if (!seen) this._startTutorial(false);
+      else this.newGame();
+    };
+    $('btn-tutorial').onclick = () => {
+      this.sfx.click();
+      this._startTutorial(true);
+    };
+    $('btn-tut-skip').onclick = () => {
+      this.sfx.click();
+      if (this._tut) this._tutEnd(false);
     };
     $('btn-continue').onclick = () => {
       this.sfx.click();
@@ -372,6 +387,10 @@ export class Game {
     this.sfx.stopBgm(); // タイトルに戻ったらBGMは止める
     this._lastIntroKey = null; // 次に始めたら季節説明を出し直す
     this._hideTutorial(false);
+    // チュートリアル途中でタイトルへ戻ったら中断(次の「はじめから」でまた出る)
+    this._tut = null;
+    this._hide('tut-panel');
+    $('btn-share').classList.remove('hidden');
     this._cancelClearSeq();
     for (const id of ['modal-help', 'modal-continue', 'modal-clear', 'modal-over', 'modal-share', 'modal-season', 'modal-version']) {
       this._hide(id);
@@ -458,6 +477,79 @@ export class Game {
     }
   }
 
+  // ---------- チュートリアル(通しコース) ----------
+  // 基本3ステップ+ギミック4ステップを、手書きの極小盤面で順に体験する。
+  // 入り口は2つ: 初回の「はじめから」(フラグ保存で1回だけ) と タイトルの「チュートリアル」。
+  // 本編の状態(セーブ・スコア・コード)には一切触らない。
+  _startTutorial(fromTitle) {
+    this._tut = { on: true, fromTitle, idx: 0 };
+    this.sfx.startBgm();
+    this._hide('screen-title');
+    this._hide('modal-help');
+    this._show('hud');
+    $('btn-share').classList.add('hidden'); // コードは意味がないので隠す
+    $('btn-tut-skip').textContent = fromTitle ? 'スキップしてタイトルへ' : 'スキップしてゲームへ';
+    this._show('tut-panel');
+    this._tutBuildStep();
+  }
+
+  _tutBuildStep() {
+    const step = TUTORIAL_STEPS[this._tut.idx];
+    // 盤面はプレイで書き換わる(eaten等)ので、毎回コピーから作る
+    this.level = JSON.parse(JSON.stringify(step.level));
+    this.alive = this.level.tiles.map((_, i) => i !== 0);
+    this.curIdx = 0;
+    this.stance = stanceFromTile(this.level, 0);
+    this.carrots = 0;
+    this.moves = 0;
+    this.scene.buildStage(this.level);
+    this.scene.setNumbersVisible(true);
+    this.scene.setGridVisible(true);
+    $('tut-step-no').textContent = `チュートリアル ${this._tut.idx + 1} / ${TUTORIAL_STEPS.length}`;
+    $('tut-text').innerHTML = step.text;
+    this._hideTutorial(false);
+    this._updateHUD(); // ステージ表示を「-」へ即時更新(登場アニメ完了を待たない)
+    this._beginEntrance();
+  }
+
+  // 移動が確定するたびに完了条件をチェック。完了なら次のステップへ(trueを返す)。
+  _tutAfterMove(landedId) {
+    const step = TUTORIAL_STEPS[this._tut.idx];
+    const d = step.done;
+    const hit =
+      (d.on === 'goal' && landedId === 'goal') ||
+      (d.on === 'tile' && landedId === d.idx);
+    if (!hit) return false;
+    this.state = 'busy';
+    this._updateHUD();
+    if (landedId === 'goal') this.sfx.clear();
+    setTimeout(() => this._tutAdvance(), landedId === 'goal' ? 1100 : 500);
+    return true;
+  }
+
+  _tutAdvance() {
+    if (!this._tut) return; // スキップ等で終了済み
+    this._tut.idx++;
+    if (this._tut.idx >= TUTORIAL_STEPS.length) {
+      this._tutEnd(true);
+      return;
+    }
+    this._tutBuildStep();
+  }
+
+  _tutEnd(completed) {
+    const fromTitle = this._tut && this._tut.fromTitle;
+    this._tut = null;
+    try {
+      localStorage.setItem(SAVE_KEY + '_tut_seen', '1');
+    } catch (e) {}
+    this._hide('tut-panel');
+    $('btn-share').classList.remove('hidden');
+    if (completed) this._toast('チュートリアルおわり！さあ、ぼうけんへ 🎉', 2200);
+    if (fromTitle) this._showTitle();
+    else this.newGame(); // 初回フロー: そのまま本編スタート
+  }
+
   // ---------- ゲーム進行 ----------
   newGame() {
     this.seed = 1000 + Math.floor(Math.random() * 9000);
@@ -536,6 +628,11 @@ export class Game {
 
   retryStage() {
     if (this.state === 'busy') return;
+    // チュートリアル中は同じステップをやり直すだけ(回数もスコアも関係なし)
+    if (this._tut && this._tut.on) {
+      this._tutBuildStep();
+      return;
+    }
     this.retryCount++;
     this.startStage();
   }
@@ -570,6 +667,8 @@ export class Game {
   // 段差・ジャンプ台・トロッコが初めて登場するステージで、該当マスに吹き出しを出す。
   // ウサギを動かしたら消えて、以降は表示しない。1ステージにつき1件（優先順）。
   _maybeShowGimmickTutorial() {
+    // 通しチュートリアル中は説明パネルがあるので吹き出しは出さない
+    if (this._tut && this._tut.on) return;
     const TUTS = [
       {
         flag: '_tut_h',
@@ -656,7 +755,7 @@ export class Game {
 
   // ---------- HUD ----------
   _updateHUD() {
-    $('hud-stage').textContent = this.stage;
+    $('hud-stage').textContent = this._tut && this._tut.on ? '-' : this.stage;
     $('hud-score').textContent = fmt(this.score);
     $('hud-count').textContent = this.carrots;
   }
@@ -672,6 +771,13 @@ export class Game {
     );
 
     if (this.reachable.length === 0) {
+      // チュートリアル中はゲームオーバーにせず、同じステップをやり直す
+      if (this._tut && this._tut.on) {
+        this.state = 'busy';
+        this._toast('もういちど やってみよう！');
+        setTimeout(() => this._tut && this._tutBuildStep(), 900);
+        return;
+      }
       // 詰み
       this.state = 'over';
       this.scene.sadHop();
@@ -708,6 +814,12 @@ export class Game {
     this.moves++;
 
     if (id === 'goal') {
+      if (this._tut && this._tut.on) {
+        // チュートリアル中はスコア画面を出さず、お祝いだけして次のステップへ
+        this.scene.celebrate();
+        this._tutAfterMove('goal');
+        return;
+      }
       this._onClear();
       return;
     }
@@ -725,6 +837,7 @@ export class Game {
       this.stance = landInfo.stance;
       this.curIdx = leafIdx;
       this.scene.setOnSpring(!!this.level.tiles[leafIdx].spring);
+      if (this._tut && this._tut.on && this._tutAfterMove(id)) return;
       this.state = 'playing';
       this._updateHUD();
       this._updateReachable();
@@ -748,6 +861,8 @@ export class Game {
     this.curIdx = tile.cart ? -1 : id;
 
     this.scene.setOnSpring(this.curIdx >= 0 && this.level.tiles[this.curIdx].spring);
+
+    if (this._tut && this._tut.on && this._tutAfterMove(id)) return;
 
     this.state = 'playing';
     this._updateHUD();
