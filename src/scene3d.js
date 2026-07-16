@@ -578,46 +578,75 @@ export class GameScene {
   }
 
   // ---------- つむじ風 ----------
-  // つむじ風マス(whirlIdx)に乗ったウサギが、グルグル回りながら飛び先(destIdx)へ飛ぶ。
-  // つむじ風は使い切りで、飛んだあと霧散して消える。
-  whirlAway(whirlIdx, destIdx) {
+  // つむじ風が画面外へ飛び去る(共通処理)。盤面中心から離れる向きへ上昇しつつ消える。
+  _whirlExit(whirlIdx, delay = 0) {
+    const wt = this.tileMeshes[whirlIdx];
+    if (!wt || !wt.group.visible) return;
+    const g = wt.group;
+    const spin = g.userData.spin;
+    const p0 = g.position.clone();
+    const center = this.fitCenter || new THREE.Vector3();
+    let dx = p0.x - center.x;
+    let dz = p0.z - center.z;
+    const len = Math.hypot(dx, dz) || 1;
+    dx /= len;
+    dz /= len;
+    const dist = (this.viewHalfW || 8) + 5; // 確実に画面外まで
+    this.killTweens('tile' + whirlIdx);
+    this.tween(1.0, delay, (t) => t, (k) => {
+      g.position.set(p0.x + dx * dist * k, p0.y + 1.6 * k, p0.z + dz * dist * k);
+      if (spin) spin.rotation.y += 0.35; // 飛び去りながら勢いよく回る
+      const fade = Math.max(0, 1 - k * 1.15);
+      g.traverse((o) => {
+        if (o.material && o.material.transparent) o.material.opacity = 0.6 * fade;
+      });
+    }, () => {
+      wt.alive = false;
+      g.visible = false;
+    }, 'tile' + whirlIdx);
+  }
+
+  // つむじ風マス(whirlIdx)に乗ったウサギを、風が包んだまま対の落ち葉マス(leafIdx)へ運ぶ。
+  // うさぎを落とすと風はそのまま画面外へ飛び去る。
+  whirlCarry(whirlIdx, leafIdx) {
     return new Promise((resolve) => {
       const wt = this.tileMeshes[whirlIdx];
-      const dest = this.level.tiles[destIdx];
+      const dest = this.level.tiles[leafIdx];
       const p0 = this.rabbit.position.clone();
       const p1 = this.worldPos(dest.x, dest.y, this._standY(dest.x, dest.y));
       const baseRotY = this.rabbit.rotation.y;
+      const g = wt ? wt.group : null;
+      const spin = g ? g.userData.spin : null;
+      const gp0 = g ? g.position.clone() : null;
       this.killTweens('rabbit');
+      if (g) this.killTweens('tile' + whirlIdx);
 
-      // つむじ風が一瞬ふくらんでから霧散して消える
-      if (wt) {
-        const g = wt.group;
-        this.killTweens('tile' + whirlIdx);
-        this.tween(0.75, 0, easeOut, (k) => {
-          g.scale.set(1 + 0.9 * k, 1 + 0.6 * k, 1 + 0.9 * k);
-          g.traverse((o) => {
-            if (o.material && o.material.transparent) o.material.opacity = 0.6 * (1 - k);
-          });
-        }, () => {
-          wt.alive = false;
-          g.visible = false;
-        }, 'tile' + whirlIdx);
-      }
-
-      // ウサギ: 弧を描きつつグルグル回って飛び先へ
-      this.tween(0.85, 0, easeInOut, (k) => {
+      // 風がうさぎを包んだまま一緒に弧を描いて移動。うさぎは中でグルグル回る
+      this.tween(0.95, 0, easeInOut, (k) => {
         this.rabbit.position.lerpVectors(p0, p1, k);
-        this.rabbit.position.y = p0.y + (p1.y - p0.y) * k + 1.15 * Math.sin(k * Math.PI);
-        this.rabbit.rotation.y = baseRotY + k * Math.PI * 6; // グルグル
-        const s = 1 - 0.22 * Math.sin(k * Math.PI);
+        this.rabbit.position.y = p0.y + (p1.y - p0.y) * k + 1.0 * Math.sin(k * Math.PI);
+        this.rabbit.rotation.y = baseRotY + k * Math.PI * 6;
+        const s = 1 - 0.18 * Math.sin(k * Math.PI);
         this.rabbit.scale.set(s, s, s);
+        if (g) {
+          // 風はうさぎにまとわりつく(足元より少し下から包む)
+          g.position.set(this.rabbit.position.x, this.rabbit.position.y - 0.3, this.rabbit.position.z);
+          if (spin) spin.rotation.y += 0.3;
+        }
       }, () => {
         this.rabbit.position.copy(p1);
         this.rabbit.rotation.y = Math.PI / 4;
         this.rabbit.scale.setScalar(1);
+        // うさぎを落としたら、風はそのまま画面外へ飛び去る(待たない)
+        this._whirlExit(whirlIdx);
         resolve();
       }, 'rabbit');
     });
+  }
+
+  // 落ち葉マスに直接乗ったとき: 対のつむじ風が使えなくなり、画面外へ飛び去る
+  whirlFlee(whirlIdx) {
+    this._whirlExit(whirlIdx, 0.15);
   }
 
   setNumbersVisible(v) {
@@ -806,7 +835,7 @@ export class GameScene {
   // 着地したマスのニンジンをパクッと消す（ウサギが食べた演出とセット）
   eatCarrots(idx) {
     const c = this.tileMeshes[idx].group.userData.carrots;
-    if (!c.visible) return;
+    if (!c || !c.visible) return; // つむじ風マスにはニンジンが無い
     this.eatStart = this.time; // ウサギのモグモグを1回再生
     this.killTweens(`carrot${idx}`);
     this.tween(0.22, 0, easeOut, (k) => {

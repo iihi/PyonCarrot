@@ -20,6 +20,7 @@ export const MODEL_FILES = {
   rabbit: 'rabbit.glb', // プレイヤー兎
   goalRabbit: 'goal-rabbit.glb', // ゴールで待つピンク兎
   whirl: 'whirl.glb', // つむじ風
+  leafBase: 'leaf-base.glb', // 落ち葉マスの土台(つむじ風の対)
   carrot: 'carrot.glb', // ニンジン1本
   spring: 'spring.glb', // ジャンプ台のバネ
   cart: 'cart.glb', // トロッコ

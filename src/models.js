@@ -319,11 +319,43 @@ export function makeMound() {
   return g;
 }
 
+// 落ち葉マスの土台（つむじ風の対＝飛ばされる先）。積もった落ち葉の山。
+// 機能は畑マスと同じで、見た目だけ落ち葉モチーフ。
+export function makeLeafBase() {
+  const g = new THREE.Group();
+  // 落ち葉の山(2段) — 秋色
+  g.add(mesh(new THREE.CylinderGeometry(0.42, 0.5, 0.14, 8), mat(0xc9722e), 0, 0.07, 0));
+  g.add(mesh(new THREE.CylinderGeometry(0.36, 0.43, 0.1, 8), mat(0xdd8f3a), 0, 0.17, 0));
+  // 上に散った1枚1枚の葉(色違いの薄い板)
+  const leafCols = [0xe8632a, 0xf2b13a, 0xc23a3a, 0xb9722a];
+  const rand = mulberryLocal(4242);
+  for (let i = 0; i < 8; i++) {
+    const ang = rand() * Math.PI * 2;
+    const r = rand() * 0.3;
+    const leaf = mesh(
+      new THREE.CircleGeometry(0.07 + rand() * 0.04, 5),
+      new THREE.MeshStandardMaterial({
+        color: leafCols[i % leafCols.length],
+        flatShading: true,
+        side: THREE.DoubleSide,
+      }),
+      Math.cos(ang) * r,
+      0.225 + rand() * 0.01,
+      Math.sin(ang) * r
+    );
+    leaf.rotation.x = -Math.PI / 2 + (rand() - 0.5) * 0.35;
+    leaf.rotation.z = rand() * Math.PI;
+    g.add(leaf);
+  }
+  return g;
+}
+
 export function makeTile(tile) {
   const g = new THREE.Group();
   const value = tile.value;
 
-  g.add(makeMound());
+  // 落ち葉マス(つむじ風の対)は土台を落ち葉の山に差し替える(機能は同じ)
+  g.add(tile.leaf ? makeLeafBase() : makeMound());
 
   // ジャンプ台: 土台の上に赤いコイルバネ+天板。ニンジンは天板の上に乗る
   let carrotLift = 0;
@@ -509,20 +541,22 @@ export function makeGoal() {
 
 // ---------- 段差地形（段々畑） ----------
 // 高さレベルごとに色を一段ずつ変えて、パッと見で段数が分かるようにする。
-// 通常季は緑(上るほど明るい黄緑)＋茶の側面。冬は雪＝白基調で、高さが上がるほど
-// 少しずつ青(氷河色)を濃くする。側面も雪色にする(冬は盛り上がりも雪、というFB対応)。
-const TERRACE_TOP = [0, 0x9ad35f, 0xbfe27f, 0xe2f0a2];
-const TERRACE_SIDE = 0x8a5a30;
-// 冬(氷河)パレット: 上面は白→薄氷青→氷河青、側面は影になった氷色
-const TERRACE_TOP_WINTER = [0, 0xd6ebf8, 0xbfe0f4, 0x8fc7ec];
-const TERRACE_SIDE_WINTER = 0xabcde2;
+// 季節ごとのパレット(top=高さ1..3の上面色 / side=側面色):
+//  春=明るい黄緑(上るほど明るい)、夏=濃い緑(上るほど濃い)、
+//  秋=茶色(上るほど濃い)、冬=雪(上るほど氷河の青が濃い。側面も雪色)
+const TERRACE_PALETTES = {
+  spring: { top: [0, 0x9ad35f, 0xbfe27f, 0xe2f0a2], side: 0x8a5a30 },
+  summer: { top: [0, 0x4ea840, 0x3c9033, 0x2c7a27], side: 0x6f4f2a },
+  autumn: { top: [0, 0xbd8a45, 0x9e6f34, 0x7d5526], side: 0x6b4526 },
+  winter: { top: [0, 0xd6ebf8, 0xbfe0f4, 0x8fc7ec], side: 0xabcde2 },
+};
 
 export function makeTerrain(heights, season = 'spring') {
   const g = new THREE.Group();
   const c = (GRID - 1) / 2;
-  const winter = season === 'winter';
-  const topPalette = winter ? TERRACE_TOP_WINTER : TERRACE_TOP;
-  const sideMat = mat(winter ? TERRACE_SIDE_WINTER : TERRACE_SIDE);
+  const pal = TERRACE_PALETTES[season] || TERRACE_PALETTES.spring;
+  const topPalette = pal.top;
+  const sideMat = mat(pal.side);
   const gridVerts = [];
   for (let x = 0; x < GRID; x++) {
     for (let y = 0; y < GRID; y++) {

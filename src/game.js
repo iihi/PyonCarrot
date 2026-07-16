@@ -9,7 +9,6 @@ import {
   parseCode,
   GOLD_MULT,
   seasonForStage,
-  whirlOutcome,
 } from './level.js';
 import { GameScene } from './scene3d.js';
 import { Sfx } from './sfx.js';
@@ -26,7 +25,7 @@ const retryMult = (r) => (r === 0 ? 1.5 : r >= 3 ? 0.5 : 1.0); // リトライ�
 const SEASON_INTRO = {
   spring: { emoji: '🌸', name: '春', color: '#ff9ec7', text: 'まずは基本！<br>ニンジンを集めて、ゴールでまつ<b>ピンクのウサギ</b>をめざそう。' },
   summer: { emoji: '☀️', name: '夏', color: '#2fb2e0', text: '<b>ジャンプ台</b>とうじょう！<br>のって飛ぶと<b>2マス遠く</b>までとべるよ。' },
-  autumn: { emoji: '🍂', name: '秋', color: '#e0842f', text: '<b>つむじ風</b>があらわれた！<br>のると<b>ほかのマス</b>までビュ〜ンと飛ばされる。<br>どこに飛ぶかはお楽しみ！' },
+  autumn: { emoji: '🍂', name: '秋', color: '#e0842f', text: '<b>つむじ風</b>があらわれた！<br>のると対(つい)の<b>落ち葉マス</b>まで<br>ビュ〜ンと運ばれるよ。' },
   winter: { emoji: '❄️', name: '冬', color: '#4aa3d6', text: '<b>ソリ</b>にのって、進んだ方向へすべって、<br>かべ(段差や畑)の手前で止まる。<br>止まった所から<b>数字ぶん</b>ジャンプ！' },
   allin: { emoji: '🎊', name: 'ぜんぶ！', color: '#7c5cff', text: 'ここからは<b>ぜんぶ</b>でてくる！' },
 };
@@ -467,7 +466,6 @@ export class Game {
     this.curIdx = 0; // 立っているマス(空きマスなら -1)
     this.stance = stanceFromTile(this.level, 0);
     this.carrots = 0; // ニンジンは持ち越さない
-    this.jumps = 0; // これまでのジャンプ回数(人間の向きの計算に使う)
     this.moves = 0; // これまでの手数(スピードボーナス用)
 
     this._hide('screen-title');
@@ -586,7 +584,7 @@ export class Game {
         flag: '_tut_whirl',
         pick: (t) => !!t.whirl,
         prefer: () => 0,
-        html: '🌪️ <b>つむじ風</b>のマス！のると<br />ほかのマスまでビュ〜ンと飛ばされるよ。<br />どこに飛ぶかはお楽しみ！',
+        html: '🌪️ <b>つむじ風</b>のマス！のると対(つい)の<br /><b>落ち葉マス</b>までビュ〜ンと運ばれるよ',
       },
     ];
 
@@ -688,10 +686,8 @@ export class Game {
     const fromStance = this.stance;
     const fromIdx = this.curIdx; // 立っていたマス(空きマスなら -1)
     const onSpring = fromIdx >= 0 && this.level.tiles[fromIdx].spring;
-    const targetTile = id === 'goal' ? null : this.level.tiles[id];
-    const isWhirl = !!(targetTile && targetTile.whirl);
     const landInfo =
-      id === 'goal' || isWhirl
+      id === 'goal'
         ? null
         : landStance(this.level, this.alive, fromStance.x, fromStance.y, id);
 
@@ -706,43 +702,32 @@ export class Game {
       this._onClear();
       return;
     }
-    this.jumps++; // つむじ風の飛び先を決める疑似乱数の種
 
-    // つむじ風マス: 乗ると疑似ランダムで他マスへ飛ばされる(飛び先は必ずクリア可能)。
-    // つむじ風は使い切りで消える。飛んだ先では通常着地と同じ処理(食べる/トロッコ発動)。
-    if (isWhirl) {
-      let mask = 0;
-      for (let i = 0; i < this.level.tiles.length; i++) if (this.alive[i]) mask |= 1 << i;
-      const out = whirlOutcome(this.level, mask, this.jumps, id);
-      this.alive[id] = false;
-      if (out) {
-        const destTile = this.level.tiles[out.d];
-        await this.scene.whirlAway(id, out.d); // グルグル回って飛ばされる演出
-        this.sfx.land();
-        this._eatTile(out.d); // 飛んだ先のニンジンをパクッ
-        for (const e of out.eaten) this.alive[e] = false;
-        if (destTile.cart) {
-          this.sfx.slide();
-          await this.scene.rideCart(out.d, out.stance);
-        }
-        this.stance = out.stance;
-        this.curIdx = destTile.cart ? -1 : out.d;
-      } else {
-        // 保険(生成時検証で通常起きない): つむじ風マスにそのまま立つ
-        this.scene.whirlDisperse && this.scene.whirlDisperse(id);
-        this.stance = { x: targetTile.x, y: targetTile.y, h: this.level.heights[targetTile.x][targetTile.y], power: 1, id: 'w' + id };
-        this.curIdx = -1;
-      }
-      this.scene.setOnSpring(this.curIdx >= 0 && this.level.tiles[this.curIdx].spring);
+    const tile = this.level.tiles[id];
+    for (const idx of landInfo.eaten) this.alive[idx] = false;
+
+    // つむじ風マス: うさぎを包んで対の落ち葉マスまで運び、風は画面外へ飛び去る。
+    // 落ち葉マスでは通常着地と同じ処理(ニンジンを食べて数字が次のジャンプ力)。
+    if (tile.whirl) {
+      const leafIdx = tile.pair;
+      await this.scene.whirlCarry(id, leafIdx);
+      this.sfx.land();
+      this._eatTile(leafIdx); // 運ばれた先の落ち葉マスのニンジンをパクッ
+      this.stance = landInfo.stance;
+      this.curIdx = leafIdx;
+      this.scene.setOnSpring(!!this.level.tiles[leafIdx].spring);
       this.state = 'playing';
       this._updateHUD();
       this._updateReachable();
       return;
     }
 
-    const tile = this.level.tiles[id];
-    for (const idx of landInfo.eaten) this.alive[idx] = false;
     this._eatTile(id); // 着地マス(トロッコ本体)のニンジンをパクッ
+
+    // 落ち葉マスに直接乗った場合、対のつむじ風は使えなくなり画面外へ飛び去る
+    if (tile.pairWhirl != null && landInfo.eaten.includes(tile.pairWhirl)) {
+      this.scene.whirlFlee(tile.pairWhirl);
+    }
 
     // トロッコ: レール方向へ運ばれ、段差/端の手前で大破 → 空きマスに降りる
     if (tile.cart) {
