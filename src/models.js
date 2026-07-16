@@ -319,31 +319,97 @@ export function makeMound() {
   return g;
 }
 
-// 落ち葉マスの土台（つむじ風の対＝飛ばされる先）。積もった落ち葉の山。
-// 機能は畑マスと同じで、見た目だけ落ち葉モチーフ。
+// 落ち葉のテクスチャ(Canvasで生成・全落ち葉マスで共有)。
+// 腐葉土の下地に、色とりどりの葉っぱ(尖った楕円+葉脈)を敷き詰めて描く。
+let _leafTex = null;
+function leafTexture() {
+  if (_leafTex !== null) return _leafTex;
+  if (typeof document === 'undefined') {
+    _leafTex = false; // node(書き出しツール)ではテクスチャ無し=単色フォールバック
+    return _leafTex;
+  }
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const ctx = c.getContext('2d');
+  // 下地: 暗めの腐葉土ブラウン(葉が浮き立つように)
+  ctx.fillStyle = '#5f3814';
+  ctx.fillRect(0, 0, 256, 256);
+  const rand = mulberryLocal(777);
+  // 遠目でも分かるよう、彩度高めの秋色
+  const cols = ['#ff7a2a', '#ffc23a', '#e04434', '#ff9a3f', '#e8b02e', '#ffce55', '#d95c22'];
+  // 葉っぱ(両端が尖った楕円)を大きめに重ねる。縁からはみ出す分も描いて継ぎ目を無くす
+  for (let i = 0; i < 55; i++) {
+    const x = rand() * 256;
+    const y = rand() * 256;
+    const a = rand() * Math.PI * 2;
+    const len = 34 + rand() * 26;
+    const wid = len * 0.42;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(a);
+    ctx.fillStyle = cols[Math.floor(rand() * cols.length)];
+    ctx.beginPath();
+    ctx.moveTo(-len / 2, 0);
+    ctx.quadraticCurveTo(0, -wid, len / 2, 0);
+    ctx.quadraticCurveTo(0, wid, -len / 2, 0);
+    ctx.fill();
+    // うっすら影で重なりを出す
+    ctx.strokeStyle = 'rgba(70,35,8,0.35)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    // 中央の葉脈
+    ctx.beginPath();
+    ctx.moveTo(-len / 2 + 2, 0);
+    ctx.lineTo(len / 2 - 2, 0);
+    ctx.strokeStyle = 'rgba(90,45,10,0.55)';
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    ctx.restore();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  _leafTex = tex;
+  return _leafTex;
+}
+
+// 落ち葉マスの土台（つむじ風の対＝飛ばされる先）。
+// 落ち葉テクスチャを上面と側面に貼った「積もった落ち葉の山」。機能は畑マスと同じ。
 export function makeLeafBase() {
   const g = new THREE.Group();
-  // 落ち葉の山(2段) — 秋色
-  g.add(mesh(new THREE.CylinderGeometry(0.42, 0.5, 0.14, 8), mat(0xc9722e), 0, 0.07, 0));
-  g.add(mesh(new THREE.CylinderGeometry(0.36, 0.43, 0.1, 8), mat(0xdd8f3a), 0, 0.17, 0));
-  // 上に散った1枚1枚の葉(色違いの薄い板)
-  const leafCols = [0xe8632a, 0xf2b13a, 0xc23a3a, 0xb9722a];
+  const tex = leafTexture();
+  const leafMat = (fallback) =>
+    tex
+      ? new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, flatShading: true })
+      : mat(fallback);
+  const sideM = leafMat(0xc9722e);
+  const topM = leafMat(0xdd8f3a);
+  // 山本体(側面・上面ともテクスチャ)
+  const pile = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.5, 0.2, 10), [
+    sideM,
+    topM,
+    sideM,
+  ]);
+  pile.position.y = 0.1;
+  pile.castShadow = true;
+  pile.receiveShadow = true;
+  g.add(pile);
+  // ふちから大きめの葉が数枚はみ出して、シルエットでも落ち葉と分かるように
+  const rimCols = [0xff7a2a, 0xffc23a, 0xe04434, 0xff9a3f];
   const rand = mulberryLocal(4242);
-  for (let i = 0; i < 8; i++) {
-    const ang = rand() * Math.PI * 2;
-    const r = rand() * 0.3;
+  for (let i = 0; i < 7; i++) {
+    const ang = (i / 7) * Math.PI * 2 + rand() * 0.5;
     const leaf = mesh(
-      new THREE.CircleGeometry(0.07 + rand() * 0.04, 5),
+      new THREE.CircleGeometry(0.12 + rand() * 0.06, 5),
       new THREE.MeshStandardMaterial({
-        color: leafCols[i % leafCols.length],
+        color: rimCols[i % rimCols.length],
         flatShading: true,
         side: THREE.DoubleSide,
       }),
-      Math.cos(ang) * r,
-      0.225 + rand() * 0.01,
-      Math.sin(ang) * r
+      Math.cos(ang) * 0.46,
+      0.16 + rand() * 0.05,
+      Math.sin(ang) * 0.46
     );
-    leaf.rotation.x = -Math.PI / 2 + (rand() - 0.5) * 0.35;
+    leaf.rotation.x = -Math.PI / 2 + (rand() - 0.5) * 0.5;
     leaf.rotation.z = rand() * Math.PI;
     g.add(leaf);
   }
