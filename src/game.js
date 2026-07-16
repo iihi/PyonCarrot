@@ -755,34 +755,34 @@ export class Game {
   }
 
   // ---------- SNSシェア ----------
-  // 結果カード(盤面スクショ+ロゴ+成績)を1枚のPNGに合成する
+  // 結果カード(ロゴ+成績のみの横長バナー。盤面は入れない)をPNGに合成する
   _buildShareCard() {
     const W = 1080;
-    const H = 1080;
+    const H = 320;
     const c = document.createElement('canvas');
     c.width = W;
     c.height = H;
     const ctx = c.getContext('2d');
 
-    // 盤面のスクショを正方形にクロップして全面に敷く
-    const shot = this.scene.snapshot();
-    const side = Math.min(shot.width, shot.height);
-    ctx.fillStyle = '#bfe9ff';
+    // 背景: 緑地に斜めの格子模様
+    ctx.fillStyle = '#82c15e';
     ctx.fillRect(0, 0, W, H);
-    ctx.drawImage(
-      shot,
-      (shot.width - side) / 2,
-      (shot.height - side) / 2,
-      side,
-      side,
-      0,
-      0,
-      W,
-      H
-    );
+    ctx.strokeStyle = 'rgba(25, 80, 15, 0.10)';
+    ctx.lineWidth = 3;
+    const step = 46;
+    for (let i = -H; i < W + H; i += step) {
+      ctx.beginPath();
+      ctx.moveTo(i, 0);
+      ctx.lineTo(i + H, H);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(i + H, 0);
+      ctx.lineTo(i, H);
+      ctx.stroke();
+    }
 
-    // 下部の白パネル(角丸)
-    const px = 40, py = 764, pw = W - 80, ph = 276, r = 32;
+    // 白の角丸パネル
+    const px = 18, py = 18, pw = W - 36, ph = H - 36, r = 42;
     ctx.beginPath();
     ctx.moveTo(px + r, py);
     ctx.arcTo(px + pw, py, px + pw, py + ph, r);
@@ -790,7 +790,7 @@ export class Game {
     ctx.arcTo(px, py + ph, px, py, r);
     ctx.arcTo(px, py, px + pw, py, r);
     ctx.closePath();
-    ctx.fillStyle = 'rgba(255,253,246,0.94)';
+    ctx.fillStyle = '#fefefa';
     ctx.fill();
 
     const font = (size, weight = 'bold') =>
@@ -799,28 +799,28 @@ export class Game {
 
     // ロゴ(読み込めていなければタイトル文字で代替)
     const logo = this._logoImg;
-    let tx = px + 44;
+    let tx = px + 48;
     if (logo && logo.complete && logo.naturalWidth) {
-      const lh = 190;
+      const lh = ph - 36;
       const lw = (logo.naturalWidth / logo.naturalHeight) * lh;
-      ctx.drawImage(logo, px + 28, py + (ph - lh) / 2, lw, lh);
-      tx = px + 28 + lw + 34;
+      ctx.drawImage(logo, px + 24, py + (ph - lh) / 2, lw, lh);
+      tx = px + 24 + lw + 44;
     } else {
       ctx.fillStyle = '#e8760f';
-      ctx.font = font(46);
-      ctx.fillText(document.title, tx, py + 52);
+      ctx.font = font(44);
+      ctx.fillText(document.title, tx, py + 50);
     }
 
-    // 成績
+    // 成績(文言は仮。決まったらここを差し替える)
     ctx.fillStyle = '#3a9d43';
-    ctx.font = font(58);
-    ctx.fillText(`STAGE ${this.stage} クリア！`, tx, py + 66);
+    ctx.font = font(62);
+    ctx.fillText(`STAGE ${this.stage} クリア！`, tx, py + 62);
     ctx.fillStyle = '#e8760f';
-    ctx.font = font(52);
+    ctx.font = font(56);
     ctx.fillText(`SCORE ${fmt(this.score)}`, tx, py + 142);
-    ctx.fillStyle = '#7b6a55';
-    ctx.font = font(40, 'normal');
-    ctx.fillText(`コード: ${makeCode(this.seed, this.stage)}`, tx, py + 214);
+    ctx.fillStyle = '#7d7d78';
+    ctx.font = font(44, 'normal');
+    ctx.fillText(`コード: ${makeCode(this.seed, this.stage)}`, tx, py + 218);
 
     return new Promise((resolve) => c.toBlob(resolve, 'image/png'));
   }
