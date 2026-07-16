@@ -109,6 +109,13 @@ export class GameScene {
     return 0.22 + this._cellY(gx, gy);
   }
 
+  // シェア画像用: いまの盤面を描画してキャンバスを返す。
+  // preserveDrawingBuffer 無しでも、直前に render すれば同じ同期処理内では読み出せる。
+  snapshot() {
+    this.renderer.render(this.scene, this.camera);
+    return this.renderer.domElement;
+  }
+
   // 吹き出し等のHTML配置用: マス上のワールド座標を画面ピクセルに変換
   projectToScreen(gx, gy, yOffset = 0) {
     const v = this.worldPos(gx, gy, this._cellY(gx, gy) + yOffset);

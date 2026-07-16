@@ -52,6 +52,10 @@ export class Game {
     this._loadSettings();
     this._showTitle();
 
+    // シェアカード用にロゴを先読み(失敗しても文字で代替するので待たない)
+    this._logoImg = new Image();
+    this._logoImg.src = './logo.png';
+
     // 初回のタップ/クリックでiOSのオーディオを解錠する
     window.addEventListener(
       'pointerdown',
@@ -235,6 +239,11 @@ export class Game {
       this.sfx.click();
       $('share-code').textContent = makeCode(this.seed, this.stage);
       this._show('modal-share');
+    };
+    // SNSシェア(結果カード画像+テキストをOSの共有シートへ)
+    $('btn-clear-share').onclick = () => {
+      this.sfx.click();
+      this._shareResult();
     };
     // 演出中にダイアログをタップしたら最後まで一気に表示
     $('modal-clear').addEventListener('click', (e) => {
@@ -743,6 +752,119 @@ export class Game {
     this.state = 'playing';
     this._updateHUD();
     this._updateReachable();
+  }
+
+  // ---------- SNSシェア ----------
+  // 結果カード(盤面スクショ+ロゴ+成績)を1枚のPNGに合成する
+  _buildShareCard() {
+    const W = 1080;
+    const H = 1080;
+    const c = document.createElement('canvas');
+    c.width = W;
+    c.height = H;
+    const ctx = c.getContext('2d');
+
+    // 盤面のスクショを正方形にクロップして全面に敷く
+    const shot = this.scene.snapshot();
+    const side = Math.min(shot.width, shot.height);
+    ctx.fillStyle = '#bfe9ff';
+    ctx.fillRect(0, 0, W, H);
+    ctx.drawImage(
+      shot,
+      (shot.width - side) / 2,
+      (shot.height - side) / 2,
+      side,
+      side,
+      0,
+      0,
+      W,
+      H
+    );
+
+    // 下部の白パネル(角丸)
+    const px = 40, py = 764, pw = W - 80, ph = 276, r = 32;
+    ctx.beginPath();
+    ctx.moveTo(px + r, py);
+    ctx.arcTo(px + pw, py, px + pw, py + ph, r);
+    ctx.arcTo(px + pw, py + ph, px, py + ph, r);
+    ctx.arcTo(px, py + ph, px, py, r);
+    ctx.arcTo(px, py, px + pw, py, r);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(255,253,246,0.94)';
+    ctx.fill();
+
+    const font = (size, weight = 'bold') =>
+      `${weight} ${size}px 'Hiragino Maru Gothic ProN','BIZ UDGothic','Yu Gothic UI',sans-serif`;
+    ctx.textBaseline = 'middle';
+
+    // ロゴ(読み込めていなければタイトル文字で代替)
+    const logo = this._logoImg;
+    let tx = px + 44;
+    if (logo && logo.complete && logo.naturalWidth) {
+      const lh = 190;
+      const lw = (logo.naturalWidth / logo.naturalHeight) * lh;
+      ctx.drawImage(logo, px + 28, py + (ph - lh) / 2, lw, lh);
+      tx = px + 28 + lw + 34;
+    } else {
+      ctx.fillStyle = '#e8760f';
+      ctx.font = font(46);
+      ctx.fillText(document.title, tx, py + 52);
+    }
+
+    // 成績
+    ctx.fillStyle = '#3a9d43';
+    ctx.font = font(58);
+    ctx.fillText(`STAGE ${this.stage} クリア！`, tx, py + 66);
+    ctx.fillStyle = '#e8760f';
+    ctx.font = font(52);
+    ctx.fillText(`SCORE ${fmt(this.score)}`, tx, py + 142);
+    ctx.fillStyle = '#7b6a55';
+    ctx.font = font(40, 'normal');
+    ctx.fillText(`コード: ${makeCode(this.seed, this.stage)}`, tx, py + 214);
+
+    return new Promise((resolve) => c.toBlob(resolve, 'image/png'));
+  }
+
+  // スマホ: OSの共有シート(画像+テキスト)へ。ユーザーがX/Instagram等を選ぶ。
+  // 非対応環境(PC等)は画像DL+テキストコピーにフォールバック。
+  async _shareResult() {
+    const code = makeCode(this.seed, this.stage);
+    const isWeb =
+      /^https?:$/.test(location.protocol) && !/^(localhost|127\.)/.test(location.hostname);
+    const url = isWeb ? location.origin + location.pathname : '';
+    const text = `${document.title} STAGE ${this.stage} クリア！\nSCORE ${fmt(this.score)} ／ ステージコード: ${code}\n#ぴょんぴょんキャロット`;
+    const full = url ? `${text}\n${url}` : text;
+
+    let blob = null;
+    try {
+      blob = await this._buildShareCard();
+    } catch (e) {}
+
+    if (blob && navigator.canShare) {
+      const file = new File([blob], 'pyonpyon-result.png', { type: 'image/png' });
+      if (navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], text: full });
+          return;
+        } catch (e) {
+          if (e && e.name === 'AbortError') return; // ユーザーが共有をやめた
+        }
+      }
+    }
+    // フォールバック: 画像を保存してテキストをコピー
+    if (blob) {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'pyonpyon-result.png';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    }
+    try {
+      await navigator.clipboard.writeText(full);
+    } catch (e) {}
+    this._toast('画像を保存して、シェア用テキストをコピーしました', 2600);
   }
 
   // 一度だけ出す説明トースト
