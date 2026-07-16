@@ -1117,8 +1117,9 @@ export class GameScene {
     for (const id of this.reachIds) {
       if (id === 'goal') active.set('goal', { col: 0xffcf22, inten: 0.4 + 0.6 * pulse });
       else if (this.tileMeshes[id] && this.tileMeshes[id].whirl)
-        // つむじ風は半透明リングで発光が目立たないため、強めに光らせる
-        active.set(id, { col: 0xffe94a, inten: 0.55 + 0.75 * pulse });
+        // つむじ風は半透明リングで発光が目立たないため強めに。
+        // ただし下限は他のマスと同じくほぼ消えるまで落とす(明滅がはっきり見えるように)
+        active.set(id, { col: 0xffe94a, inten: 0.15 + 1.15 * pulse });
       else active.set(id, { col: 0xfff04a, inten: 0.05 + 0.26 * pulse });
     }
     if (this.hintId != null) active.set(this.hintId, { col: 0xff2f8e, inten: 0.2 + 0.42 * hintPulse });
