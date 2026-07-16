@@ -101,7 +101,7 @@ export function makeRabbit() {
 }
 
 // ---------- ニンジン1本 ----------
-function makeCarrot(scale = 1, golden = false) {
+export function makeCarrot(scale = 1, golden = false) {
   const g = new THREE.Group();
   const orange = golden
     ? mat(0xffd24a, { emissive: 0x8a6a00, emissiveIntensity: 0.45, roughness: 0.45 })
@@ -153,7 +153,7 @@ const CARROT_LAYOUT = {
 };
 
 // コイルバネ(ジャンプ台)。土台いっぱいの大きな螺旋+天板。金属光沢のシルバー。
-function makeSpring() {
+export function makeSpring() {
   const g = new THREE.Group();
   // コイルは明るい光沢シルバー、上下の皿は一段濃いシルバー
   const coilMat = mat(0xe2e7ee, { roughness: 0.22, metalness: 0.75 });
@@ -183,7 +183,7 @@ function makeSpring() {
 
 // 作業用トロッコ(青メタルの木箱+スポーク車輪)。{ railGroup, cart, floorY } を返す。
 // cart.userData.wheels を回転させて走行感を出す。向きは乗車時にrideCartで回す。
-function makeCart() {
+export function makeCart() {
   const railGroup = new THREE.Group();
   const cart = new THREE.Group();
   // 畑(茶)にも草(緑)にも埋もれない青系メタル
@@ -250,7 +250,7 @@ function makeCart() {
 }
 
 // 冬のソリ(機能はトロッコと同じ)。赤い反り上がった刃+木のデッキ。
-function makeSled() {
+export function makeSled() {
   const railGroup = new THREE.Group();
   const cart = new THREE.Group();
   const wood = mat(0xba7b3e, { roughness: 0.7 });
@@ -286,26 +286,19 @@ function makeSled() {
   return { railGroup, cart, floorY };
 }
 
+// 畑マスの土台（土の山＋上面）。ニンジンやジャンプ台はこの上に乗る。
+export function makeMound() {
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.CylinderGeometry(0.4, 0.5, 0.18, 7), mat(0x9c6b45), 0, 0.09, 0));
+  g.add(mesh(new THREE.CylinderGeometry(0.38, 0.41, 0.05, 7), mat(0xb98a5e), 0, 0.19, 0));
+  return g;
+}
+
 export function makeTile(tile) {
   const g = new THREE.Group();
   const value = tile.value;
 
-  const mound = mesh(
-    new THREE.CylinderGeometry(0.4, 0.5, 0.18, 7),
-    mat(0x9c6b45),
-    0,
-    0.09,
-    0
-  );
-  g.add(mound);
-  const top = mesh(
-    new THREE.CylinderGeometry(0.38, 0.41, 0.05, 7),
-    mat(0xb98a5e),
-    0,
-    0.19,
-    0
-  );
-  g.add(top);
+  g.add(makeMound());
 
   // ジャンプ台: 土台の上に赤いコイルバネ+天板。ニンジンは天板の上に乗る
   let carrotLift = 0;
@@ -529,23 +522,28 @@ export function makeGoal() {
 }
 
 // ---------- 段差地形（段々畑） ----------
-// 高さレベルごとに草の明るさを一段ずつ変えて、パッと見で段数が分かるようにする
-// (島の草 0x82ca5c → 1段 → 2段 → 3段 と上がるほど明るい緑)
-// 島の草(0x82ca5c)から一段ずつはっきり明るく＆黄みを増やして、段数を見分けられるように
+// 高さレベルごとに色を一段ずつ変えて、パッと見で段数が分かるようにする。
+// 通常季は緑(上るほど明るい黄緑)＋茶の側面。冬は雪＝白基調で、高さが上がるほど
+// 少しずつ青(氷河色)を濃くする。側面も雪色にする(冬は盛り上がりも雪、というFB対応)。
 const TERRACE_TOP = [0, 0x9ad35f, 0xbfe27f, 0xe2f0a2];
 const TERRACE_SIDE = 0x8a5a30;
+// 冬(氷河)パレット: 上面は白→薄氷青→氷河青、側面は影になった氷色
+const TERRACE_TOP_WINTER = [0, 0xd6ebf8, 0xbfe0f4, 0x8fc7ec];
+const TERRACE_SIDE_WINTER = 0xabcde2;
 
-export function makeTerrain(heights) {
+export function makeTerrain(heights, season = 'spring') {
   const g = new THREE.Group();
   const c = (GRID - 1) / 2;
-  const sideMat = mat(TERRACE_SIDE);
+  const winter = season === 'winter';
+  const topPalette = winter ? TERRACE_TOP_WINTER : TERRACE_TOP;
+  const sideMat = mat(winter ? TERRACE_SIDE_WINTER : TERRACE_SIDE);
   const gridVerts = [];
   for (let x = 0; x < GRID; x++) {
     for (let y = 0; y < GRID; y++) {
       const lvl = heights[x][y];
       if (!lvl) continue;
       const h = lvl * HSTEP;
-      const topMat = mat(TERRACE_TOP[Math.min(lvl, TERRACE_TOP.length - 1)]);
+      const topMat = mat(topPalette[Math.min(lvl, topPalette.length - 1)]);
       // 面ごとのマテリアル: [+x, -x, +y(上面), -y, +z, -z]
       const box = new THREE.Mesh(new THREE.BoxGeometry(1, h, 1), [
         sideMat,

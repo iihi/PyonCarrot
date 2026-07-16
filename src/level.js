@@ -318,9 +318,11 @@ function landStanceM(level, mask, fromX, fromY, targetIdx) {
   if (!t.cart) {
     return { stance: stanceFromTile(level, targetIdx), eaten: [targetIdx] };
   }
-  // 進行方向 = 乗り込んだジャンプの向き
-  const rx = Math.sign(t.x - fromX);
-  const ry = Math.sign(t.y - fromY);
+  // 進行方向 = レール(生成時に「端/段差で必ず止まる」よう検証済みの向き)。
+  // ※乗り込んだ向きにすると、想定外の向きから乗ったとき未検証の方向へ走って
+  //   画面外やハマりの原因になるため、rail があればそれを優先する。
+  const rx = t.rail ? t.rail[0] : Math.sign(t.x - fromX);
+  const ry = t.rail ? t.rail[1] : Math.sign(t.y - fromY);
   const ahead = mask & ~(1 << targetIdx);
   let x = t.x;
   let y = t.y;
