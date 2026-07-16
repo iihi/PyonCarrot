@@ -9,8 +9,7 @@ import {
   parseCode,
   GOLD_MULT,
   seasonForStage,
-  caughtBy,
-  humanDangerCells,
+  whirlOutcome,
 } from './level.js';
 import { GameScene } from './scene3d.js';
 import { Sfx } from './sfx.js';
@@ -27,7 +26,7 @@ const retryMult = (r) => (r === 0 ? 1.5 : r >= 3 ? 0.5 : 1.0); // リトライ�
 const SEASON_INTRO = {
   spring: { emoji: '🌸', name: '春', color: '#ff9ec7', text: 'まずは基本！<br>ニンジンを集めて、ゴールでまつ<b>ピンクのウサギ</b>をめざそう。' },
   summer: { emoji: '☀️', name: '夏', color: '#2fb2e0', text: '<b>ジャンプ台</b>とうじょう！<br>のって飛ぶと<b>2マス遠く</b>までとべるよ。' },
-  autumn: { emoji: '🍂', name: '秋', color: '#e0842f', text: '<b>人間</b>があらわれた！<br>人間が<b>見ている方向</b>に降りると、走ってきて捕まる。<br>ジャンプするたびに人間の向きが変わるよ。' },
+  autumn: { emoji: '🍂', name: '秋', color: '#e0842f', text: '<b>つむじ風</b>があらわれた！<br>のると<b>ほかのマス</b>までビュ〜ンと飛ばされる。<br>どこに飛ぶかはお楽しみ！' },
   winter: { emoji: '❄️', name: '冬', color: '#4aa3d6', text: '<b>ソリ</b>にのって、進んだ方向へすべって、<br>かべ(段差や畑)の手前で止まる。<br>止まった所から<b>数字ぶん</b>ジャンプ！' },
   allin: { emoji: '🎊', name: 'ぜんぶ！', color: '#7c5cff', text: 'ここからは<b>ぜんぶ</b>でてくる！' },
 };
@@ -584,11 +583,10 @@ export class Game {
         html: '🛒 <b>トロッコ</b>のマス！乗ると<b>進んだ方向</b>へ<br />走って、かべ(段差や畑)の手前で止まるよ。<br />止まった所から<b>数字ぶん</b>ジャンプ！',
       },
       {
-        flag: '_tut_human',
-        src: 'humans',
-        pick: () => true,
+        flag: '_tut_whirl',
+        pick: (t) => !!t.whirl,
         prefer: () => 0,
-        html: '👨‍🌾 <b>人間</b>！見ている方向(<b>赤いマス</b>)に<br />降りると走ってきて捕まる。<br />ジャンプするたびに向きが90°変わるよ',
+        html: '🌪️ <b>つむじ風</b>のマス！のると<br />ほかのマスまでビュ〜ンと飛ばされるよ。<br />どこに飛ぶかはお楽しみ！',
       },
     ];
 
@@ -596,10 +594,7 @@ export class Game {
       try {
         if (localStorage.getItem(SAVE_KEY + tut.flag)) continue;
       } catch (e) {}
-      const cands =
-        tut.src === 'humans'
-          ? this.level.humans || []
-          : this.level.tiles.filter(tut.pick);
+      const cands = this.level.tiles.filter(tut.pick);
       if (!cands.length) continue;
 
       const cw = this.scene.canvas.clientWidth;
@@ -662,9 +657,6 @@ export class Game {
   _updateReachable() {
     this.reachable = reachableFrom(this.level, this.alive, this.stance);
     this.scene.setReachable(this.reachable);
-    // 人間の向き＆危険マス(赤)を今のジャンプ回数で更新
-    this.scene.setHumanFacing(this.jumps);
-    this.scene.setDanger(humanDangerCells(this.level, this.jumps));
     // 空きマス(トロッコ降車後)ではそのマスに次のジャンプ力を表示
     this.scene.setRabbitNumber(
       this.curIdx === -1 ? this.stance.power : null,
@@ -696,8 +688,10 @@ export class Game {
     const fromStance = this.stance;
     const fromIdx = this.curIdx; // 立っていたマス(空きマスなら -1)
     const onSpring = fromIdx >= 0 && this.level.tiles[fromIdx].spring;
+    const targetTile = id === 'goal' ? null : this.level.tiles[id];
+    const isWhirl = !!(targetTile && targetTile.whirl);
     const landInfo =
-      id === 'goal'
+      id === 'goal' || isWhirl
         ? null
         : landStance(this.level, this.alive, fromStance.x, fromStance.y, id);
 
@@ -710,6 +704,39 @@ export class Game {
 
     if (id === 'goal') {
       this._onClear();
+      return;
+    }
+    this.jumps++; // つむじ風の飛び先を決める疑似乱数の種
+
+    // つむじ風マス: 乗ると疑似ランダムで他マスへ飛ばされる(飛び先は必ずクリア可能)。
+    // つむじ風は使い切りで消える。飛んだ先では通常着地と同じ処理(食べる/トロッコ発動)。
+    if (isWhirl) {
+      let mask = 0;
+      for (let i = 0; i < this.level.tiles.length; i++) if (this.alive[i]) mask |= 1 << i;
+      const out = whirlOutcome(this.level, mask, this.jumps, id);
+      this.alive[id] = false;
+      if (out) {
+        const destTile = this.level.tiles[out.d];
+        await this.scene.whirlAway(id, out.d); // グルグル回って飛ばされる演出
+        this.sfx.land();
+        this._eatTile(out.d); // 飛んだ先のニンジンをパクッ
+        for (const e of out.eaten) this.alive[e] = false;
+        if (destTile.cart) {
+          this.sfx.slide();
+          await this.scene.rideCart(out.d, out.stance);
+        }
+        this.stance = out.stance;
+        this.curIdx = destTile.cart ? -1 : out.d;
+      } else {
+        // 保険(生成時検証で通常起きない): つむじ風マスにそのまま立つ
+        this.scene.whirlDisperse && this.scene.whirlDisperse(id);
+        this.stance = { x: targetTile.x, y: targetTile.y, h: this.level.heights[targetTile.x][targetTile.y], power: 1, id: 'w' + id };
+        this.curIdx = -1;
+      }
+      this.scene.setOnSpring(this.curIdx >= 0 && this.level.tiles[this.curIdx].spring);
+      this.state = 'playing';
+      this._updateHUD();
+      this._updateReachable();
       return;
     }
 
@@ -725,26 +752,6 @@ export class Game {
 
     this.stance = landInfo.stance;
     this.curIdx = tile.cart ? -1 : id;
-
-    // 人間はジャンプのたびに90°回る。着地と同時に回って、その「回ったあとの向き」の
-    // 赤いラインにうさぎが重なったら捕まる(非致死=ニンジンを全部奪われる)
-    this.jumps++;
-    const caught = caughtBy(this.level, this.stance.x, this.stance.y, this.jumps);
-    if (caught >= 0) {
-      // 人間が回って新しい赤ラインが出た瞬間に着地が重なった
-      this.scene.setHumanFacing(this.jumps);
-      this.scene.setDanger(humanDangerCells(this.level, this.jumps));
-      const human = this.level.humans[caught];
-      await this.scene.humanApproach(human);
-      const lost = this.carrots;
-      this.sfx.thud();
-      if (lost > 0) this.scene.scatterCarrots(this.stance, lost);
-      this.carrots = 0;
-      this.scene.removeHuman(human); // 奪ったら人間は退場
-      this.level.humans.splice(caught, 1);
-      this._caughtCount = (this._caughtCount || 0) + 1;
-      this._updateHUD();
-    }
 
     this.scene.setOnSpring(this.curIdx >= 0 && this.level.tiles[this.curIdx].spring);
 
@@ -769,7 +776,7 @@ export class Game {
 
     // スコア計算: (残ニンジン×10 + パーフェクト + スピード) × リトライ倍率
     const carrotBonus = this.carrots * SCORE_PER_CARROT;
-    const perfect = this.level.tiles.every((t) => t.eaten) ? PERFECT_BONUS : 0;
+    const perfect = this.level.tiles.every((t) => t.whirl || t.eaten) ? PERFECT_BONUS : 0;
     const speed = this.moves <= this.level.minMoves + 1 ? SPEED_BONUS : 0;
     const mult = retryMult(this.retryCount);
     const gain = Math.round((carrotBonus + perfect + speed) * mult);

@@ -19,7 +19,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 export const MODEL_FILES = {
   rabbit: 'rabbit.glb', // プレイヤー兎
   goalRabbit: 'goal-rabbit.glb', // ゴールで待つピンク兎
-  human: 'human.glb', // 農夫
+  whirl: 'whirl.glb', // つむじ風
   carrot: 'carrot.glb', // ニンジン1本
   spring: 'spring.glb', // ジャンプ台のバネ
   cart: 'cart.glb', // トロッコ

@@ -58,13 +58,13 @@ export function seasonProfile(seed, stage) {
     season: s,
     background: bg,
     allowSpring: s === 'summer' || s === 'allin',
-    allowHuman: s === 'autumn' || s === 'allin',
+    allowWhirl: s === 'autumn' || s === 'allin',
     allowCart: s === 'winter' || s === 'allin',
     allowGold: true,
     sled: bg === 'winter',
     // その季節のポイントとなるギミックは毎ステージ最低1つ出す(生成で保証)
     requireSpring: s === 'summer',
-    requireHuman: s === 'autumn', // 人間はフェーズ2で生成対応
+    requireWhirl: s === 'autumn',
     requireCart: s === 'winter',
   };
 }
@@ -75,19 +75,6 @@ const DIRS = [
   [0, 1],
   [0, -1],
 ];
-
-// 人間が向く4方向を90°ずつ回す順(1ジャンプごとに +1 で回転)
-export const HUMAN_ROT = [
-  [1, 0],
-  [0, 1],
-  [-1, 0],
-  [0, -1],
-];
-
-// これまでのジャンプ回数 jumps における、人間の向きベクトル
-export function humanFacingVec(human, jumps) {
-  return HUMAN_ROT[(((human.dir + jumps) % 4) + 4) % 4];
-}
 
 // ---------- 難易度カーブ ----------
 // チュートリアル各季節(5面)は最高の約半分でピーク。21面以降は1から段階的に最高へ。
@@ -214,65 +201,6 @@ export function tilePower(tile) {
   return tile.value + (tile.spring ? SPRING_BONUS : 0);
 }
 
-// ---------- 人間ギミック ----------
-// 人間はマス上に立ち、見ている向きの直線上(段差でさえぎられるまで)を監視する。
-// ジャンプ回数 jumps のときに (x,y) が捕獲範囲なら true。
-// (自分の高さより高い地形で視線は止まる。そのマス自身が高い場合も見えない=捕まらない)
-// 1人の人間 hu が jumps 時点で (x,y) を視認しているか
-function humanSeesCell(level, hu, x, y, jumps) {
-  const h = level.heights;
-  const [dx, dy] = humanFacingVec(hu, jumps);
-  if (dx !== 0) {
-    if (y !== hu.y || Math.sign(x - hu.x) !== dx) return false;
-  } else {
-    if (x !== hu.x || Math.sign(y - hu.y) !== dy) return false;
-  }
-  const hh = h[hu.x][hu.y];
-  let cx = hu.x + dx;
-  let cy = hu.y + dy;
-  while (cx >= 0 && cy >= 0 && cx < GRID && cy < GRID) {
-    if (h[cx][cy] > hh) return false; // 高い地形で視線が止まる
-    if (cx === x && cy === y) return true;
-    cx += dx;
-    cy += dy;
-  }
-  return false;
-}
-
-export function isCaught(level, x, y, jumps) {
-  return caughtBy(level, x, y, jumps) >= 0;
-}
-
-// (x,y) を捕まえる人間の index。いなければ -1。
-export function caughtBy(level, x, y, jumps) {
-  const humans = level.humans;
-  if (!humans || !humans.length) return -1;
-  for (let i = 0; i < humans.length; i++) {
-    if (humanSeesCell(level, humans[i], x, y, jumps)) return i;
-  }
-  return -1;
-}
-
-// いま(ジャンプ回数 jumps)の危険マス一覧(赤表示用)
-export function humanDangerCells(level, jumps) {
-  const res = [];
-  if (!level.humans || !level.humans.length) return res;
-  const h = level.heights;
-  for (const hu of level.humans) {
-    const [dx, dy] = humanFacingVec(hu, jumps);
-    const hh = h[hu.x][hu.y];
-    let cx = hu.x + dx;
-    let cy = hu.y + dy;
-    while (cx >= 0 && cy >= 0 && cx < GRID && cy < GRID) {
-      if (h[cx][cy] > hh) break;
-      res.push({ x: cx, y: cy });
-      cx += dx;
-      cy += dy;
-    }
-  }
-  return res;
-}
-
 // ---------- スタンス(ウサギの立ち位置と次のジャンプ力) ----------
 // { x, y, h(地形高さ), power(次のジャンプ力), id(メモ用キー) }
 export function stanceFromTile(level, idx) {
@@ -349,33 +277,146 @@ export function landStance(level, alive, fromX, fromY, targetIdx) {
   return landStanceM(level, mask, fromX, fromY, targetIdx);
 }
 
-// 生成用: 農夫に一度も捕まらずにゴールへ着ける手順が存在するか。
-// 実行時の判定と同じく「着地した瞬間に全員が90°回った後の向き(jumps+1)」で捕まる。
-// ゴールへの着地は実行時に捕獲判定より先にクリアになるので常に安全。
-function safeSolutionExists(level) {
+// ---------- つむじ風(whirl) ----------
+// つむじ風マスに乗ると、疑似ランダムで他のマスへ飛ばされる(地形を無視して飛ぶ)。
+// 飛び先は「そこへ飛ばされてもクリアできる候補」だけから選ぶので必ず解ける。
+// つむじ風マス自身はニンジンなし・数字なし(乗ると使い切りで消える)。
+
+// つむじ風の飛び先になり得るタイル index(生存・つむじ風以外・自分以外)
+function whirlDests(level, maskAfterWhirl, whirlIdx) {
+  const res = [];
+  for (let i = 0; i < level.tiles.length; i++) {
+    if (i === whirlIdx) continue;
+    if (!(maskAfterWhirl & (1 << i))) continue;
+    if (level.tiles[i].whirl) continue;
+    res.push(i);
+  }
+  return res;
+}
+
+// 生成時検証(whirlSafe)が重すぎる配置を打ち切るためのバジェット超過シグナル
+const WHIRL_BUDGET = Symbol('whirl-budget');
+
+// クリア可能か(つむじ風対応・memo化)。
+// needPerfect=true なら「つむじ風以外の全マス回収」も達成できることを要求。
+// つむじ風マスに乗る手は「クリア可能な飛び先が1つでもあれば成立」(実行時もそう選ぶ)。
+// budget を渡すと探索量に上限を設け、超えたら WHIRL_BUDGET を throw する(実行時は渡さない)。
+function makeClearable(level, budget) {
   const n = level.tiles.length;
-  let full = 0;
-  for (let i = 1; i < n; i++) full |= 1 << i;
-  const start = stanceFromTile(level, 0);
-  const failed = new Set();
-  const dfs = (s, m, j) => {
-    if (canJumpXY(level, s.x, s.y, s.h, s.power, level.goal.x, level.goal.y)) return true;
-    const memoKey = s.id + '|' + m + '|' + (j & 3);
-    if (failed.has(memoKey)) return false;
-    for (let i = 0; i < n; i++) {
+  let carrotMask = 0; // パーフェクト判定の対象(つむじ風以外すべて)
+  for (let i = 0; i < n; i++) if (!level.tiles[i].whirl) carrotMask |= 1 << i;
+  const memo = new Map();
+  const dfs = (s, m, needPerfect) => {
+    if (budget && --budget.left < 0) throw WHIRL_BUDGET;
+    const goalOk = !needPerfect || (m & carrotMask) === 0;
+    if (goalOk && canJumpXY(level, s.x, s.y, s.h, s.power, level.goal.x, level.goal.y)) return true;
+    const key = s.id + '|' + m + '|' + (needPerfect ? 1 : 0);
+    const cached = memo.get(key);
+    if (cached !== undefined) return cached;
+    let res = false;
+    for (let i = 0; i < n && !res; i++) {
       if (!(m & (1 << i))) continue;
       const t = level.tiles[i];
       if (!canJumpXY(level, s.x, s.y, s.h, s.power, t.x, t.y)) continue;
-      const { stance: s2, eaten } = landStanceM(level, m, s.x, s.y, i);
-      if (isCaught(level, s2.x, s2.y, j + 1)) continue;
-      let nm = m;
-      for (const e of eaten) nm &= ~(1 << e);
-      if (dfs(s2, nm, j + 1)) return true;
+      if (t.whirl) {
+        const m1 = m & ~(1 << i);
+        for (const d of whirlDests(level, m1, i)) {
+          const { stance: s2, eaten } = landStanceM(level, m1, t.x, t.y, d);
+          let nm = m1;
+          for (const e of eaten) nm &= ~(1 << e);
+          if (dfs(s2, nm, needPerfect)) { res = true; break; }
+        }
+      } else {
+        const { stance: s2, eaten } = landStanceM(level, m, s.x, s.y, i);
+        let nm = m;
+        for (const e of eaten) nm &= ~(1 << e);
+        res = dfs(s2, nm, needPerfect);
+      }
     }
-    failed.add(memoKey);
-    return false;
+    memo.set(key, res);
+    return res;
   };
-  return dfs(start, full, 0);
+  return { dfs, carrotMask };
+}
+
+// 実行時: つむじ風マス(whirlIdx)に乗ったときの飛び先を決める。
+// 「クリア可能な飛び先」に絞り、可能ならパーフェクトも維持できる飛び先を優先。
+// seed+stage+jumps 由来の疑似乱数で選ぶ(同じ手順なら同じ結果=コード再現・リプレイ両立)。
+// 返り値 { d, stance, eaten } / 候補なしなら null(生成時検証で起きない想定の保険)。
+export function whirlOutcome(level, aliveMask, jumps, whirlIdx) {
+  const { dfs } = makeClearable(level);
+  const whirl = level.tiles[whirlIdx];
+  const m1 = aliveMask & ~(1 << whirlIdx);
+  const solvable = [];
+  const perfect = [];
+  for (const d of whirlDests(level, m1, whirlIdx)) {
+    const { stance, eaten } = landStanceM(level, m1, whirl.x, whirl.y, d);
+    let nm = m1;
+    for (const e of eaten) nm &= ~(1 << e);
+    if (dfs(stance, nm, false)) {
+      const entry = { d, stance, eaten };
+      solvable.push(entry);
+      if (dfs(stance, nm, true)) perfect.push(entry);
+    }
+  }
+  const pool = perfect.length ? perfect : solvable;
+  if (!pool.length) return null;
+  const r = mulberry32(mixSeed(mixSeed(level.seed, level.stage), 70000 + jumps))();
+  return pool[Math.floor(r * pool.length)];
+}
+
+// 生成用: つむじ風配置が安全か。
+// (1)全体がクリア可能 かつ (2)到達し得る全状態で、つむじ風に乗れる場合は
+// 必ず「クリア可能な飛び先」が存在する(=乗って詰むことがない)。
+function whirlSafe(level) {
+  const n = level.tiles.length;
+  if (!level.tiles.some((t) => t.whirl)) return true;
+  // 検証量に上限を設ける。超えたら「重すぎる配置」として不採用(false)にして、
+  // より少ない個数/別配置にフォールバックさせる(大盤面で生成が固まるのを防ぐ)。
+  const budget = { left: 40000 };
+  const { dfs } = makeClearable(level, budget);
+  let full = 0;
+  for (let i = 1; i < n; i++) full |= 1 << i;
+  const start = stanceFromTile(level, 0);
+  try {
+    if (!dfs(start, full, false)) return false;
+    const seen = new Set();
+    const explore = (s, m) => {
+      if (--budget.left < 0) throw WHIRL_BUDGET;
+      const k = s.id + '|' + m;
+      if (seen.has(k)) return true;
+      seen.add(k);
+      for (let i = 0; i < n; i++) {
+        if (!(m & (1 << i))) continue;
+        const t = level.tiles[i];
+        if (!canJumpXY(level, s.x, s.y, s.h, s.power, t.x, t.y)) continue;
+        if (t.whirl) {
+          const m1 = m & ~(1 << i);
+          let anySafe = false;
+          for (const d of whirlDests(level, m1, i)) {
+            const { stance: s2, eaten } = landStanceM(level, m1, t.x, t.y, d);
+            let nm = m1;
+            for (const e of eaten) nm &= ~(1 << e);
+            if (dfs(s2, nm, false)) {
+              anySafe = true;
+              if (!explore(s2, nm)) return false;
+            }
+          }
+          if (!anySafe) return false; // 乗ると安全な飛び先が無い→この配置は不採用
+        } else {
+          const { stance: s2, eaten } = landStanceM(level, m, s.x, s.y, i);
+          let nm = m;
+          for (const e of eaten) nm &= ~(1 << e);
+          if (!explore(s2, nm)) return false;
+        }
+      }
+      return true;
+    };
+    return explore(start, full);
+  } catch (e) {
+    if (e === WHIRL_BUDGET) return false; // 検証が重すぎる配置は不採用
+    throw e;
+  }
 }
 
 // ---------- 生成 ----------
@@ -612,17 +653,22 @@ function tryGenerate(rand, n, seed, stage, heights, relax = false) {
     }
   }
 
-  const level = { seed, stage, tiles, goal, heights, count: tiles.length, humans: [] };
+  const level = { seed, stage, tiles, goal, heights, count: tiles.length };
 
-  // 人間の配置(捕獲は非致死=ニンジンを奪うだけなので解の検証は不要)。
-  // 畑のかたまりの近くに置き、初期向きで「畑が視線に入る」有効な向きにする(スタートは狙わない)。
-  if (prof.allowHuman && !relax) {
+  // つむじ風マスの配置。畑のかたまり(bbox+1)の空きセルに置く。
+  // 乗ると疑似ランダムで他マスへ飛ぶが、飛び先は実行時に「クリア可能な候補」だけから
+  // 選ぶので詰まない。ただし「乗ったのに安全な飛び先が無い」状態が起きないよう、
+  // 到達し得る全状態を whirlSafe で検証してから採用する。
+  if (prof.allowWhirl && !relax) {
+    // 大盤面(全部入りの後半)は検証コストと窮屈さを避けるため1個までに抑える
     const want =
       prof.season === 'autumn'
         ? tiles.length >= 12
           ? 2
           : 1
-        : (rand() < 0.6 ? 1 : 0) + (rand() < 0.25 ? 1 : 0);
+        : tiles.length >= 18
+          ? (rand() < 0.5 ? 1 : 0)
+          : (rand() < 0.5 ? 1 : 0) + (rand() < 0.2 ? 1 : 0);
     if (want > 0) {
       let minX = GRID, maxX = 0, minY = GRID, maxY = 0;
       for (const t of tiles) {
@@ -633,76 +679,60 @@ function tryGenerate(rand, n, seed, stage, heights, relax = false) {
       minY = Math.min(minY, goal.y); maxY = Math.max(maxY, goal.y);
       const x0 = Math.max(0, minX - 1), x1 = Math.min(GRID - 1, maxX + 1);
       const y0 = Math.max(0, minY - 1), y1 = Math.min(GRID - 1, maxY + 1);
-      const empty = [];
+      // ウサギが実際に乗れる(どこかの畑から飛べる)空きセルを優先する
+      const reachableCell = (cx, cy) => {
+        for (let i = 0; i < tiles.length; i++) {
+          const s = stanceFromTile(level, i);
+          if (canJumpXY(level, s.x, s.y, s.h, s.power, cx, cy)) return true;
+        }
+        return false;
+      };
+      const cells = [];
       for (let x = x0; x <= x1; x++) {
         for (let y = y0; y <= y1; y++) {
           if (occ.has(key(x, y))) continue;
           if (x === goal.x && y === goal.y) continue;
-          empty.push({ x, y });
+          // 背の高いギミック(ジャンプ台・トロッコ)の隣は立体表示で重なるので避ける
+          if (tiles.some((t) => (t.spring || t.cart) && Math.abs(t.x - x) <= 1 && Math.abs(t.y - y) <= 1)) continue;
+          cells.push({ x, y, reach: reachableCell(x, y) });
         }
       }
-      // (hx,hy)から向き(dx,dy)の視線に入る畑の数と、スタートを見てしまうか
-      const scan = (hx, hy, dx, dy) => {
-        const hh = heights[hx][hy];
-        let cx = hx + dx, cy = hy + dy, cov = 0, seesStart = false;
-        while (cx >= 0 && cy >= 0 && cx < GRID && cy < GRID) {
-          if (heights[cx][cy] > hh) break;
-          if (tiles.some((t) => t.x === cx && t.y === cy)) cov++;
-          if (cx === tiles[0].x && cy === tiles[0].y) seesStart = true;
-          cx += dx;
-          cy += dy;
+      cells.sort((a, b) => (b.reach ? 1 : 0) - (a.reach ? 1 : 0)); // 乗れるセルを前に
+      const buildWhirls = (count) => {
+        const picked = [];
+        const pool = cells.slice();
+        let tries = 0;
+        while (picked.length < count && pool.length && tries++ < 60) {
+          const reachN = pool.filter((c) => c.reach).length;
+          const span = reachN > 0 ? reachN : pool.length; // 乗れるセルの範囲から選ぶ
+          const c = pool.splice(Math.floor(rand() * span), 1)[0];
+          // つむじ風どうしは2マス以上離す(重なり・連鎖しづらさ)
+          if (picked.some((p) => Math.max(Math.abs(p.x - c.x), Math.abs(p.y - c.y)) < 2)) continue;
+          picked.push(c);
         }
-        return { cov, seesStart };
+        return picked;
       };
-      // 候補を1組つくる。既に置いた人間と「重なって見える(隣接)」または
-      // 「同じ向き＆同一直線=視線が重複して無意味」な配置は避ける
-      // (人間は同じ向きに一斉に回るので、同dir同一直線は常に重複する)。
-      const buildPlacement = (count) => {
-        const used = new Set();
-        const hs = [];
-        const okVsExisting = (x, y, d) => {
-          for (const h of hs) {
-            if (Math.max(Math.abs(h.x - x), Math.abs(h.y - y)) < 2) return false;
-            if (h.dir === d && (h.x === x || h.y === y)) return false;
-          }
-          return true;
-        };
-        for (let k = 0; k < count; k++) {
-          let best = null;
-          let bestCov = 0;
-          for (let tries = 0; tries < 40 && empty.length; tries++) {
-            const c = empty[Math.floor(rand() * empty.length)];
-            if (used.has(key(c.x, c.y))) continue;
-            for (let d = 0; d < 4; d++) {
-              if (!okVsExisting(c.x, c.y, d)) continue;
-              const [dx, dy] = HUMAN_ROT[d];
-              const { cov, seesStart } = scan(c.x, c.y, dx, dy);
-              if (seesStart) continue; // 初期向きでスタートは狙わない
-              if (cov > bestCov) {
-                bestCov = cov;
-                best = { x: c.x, y: c.y, dir: d };
-              }
-            }
-          }
-          if (best && bestCov >= 1) {
-            used.add(key(best.x, best.y));
-            hs.push(best);
-          }
+      // 何度か試してダメなら数を1個に減らして再挑戦
+      for (let attempt = 0; attempt < 12; attempt++) {
+        const w = buildWhirls(attempt < 8 ? want : 1);
+        if (!w.length) continue;
+        const added = w.map((c) => {
+          const t = { x: c.x, y: c.y, value: 0, whirl: true };
+          tiles.push(t);
+          occ.add(key(c.x, c.y));
+          return t;
+        });
+        level.count = tiles.length;
+        if (whirlSafe(level)) break;
+        for (const t of added) {
+          tiles.pop();
+          occ.delete(key(t.x, t.y));
         }
-        return hs;
-      };
-      // 「一度も捕まらずにクリアできる」配置だけを採用する。
-      // 何度か試してダメなら人数を1体に減らして再挑戦。
-      for (let attempt = 0; attempt < 24; attempt++) {
-        const hs = buildPlacement(attempt < 16 ? want : 1);
-        if (!hs.length) continue;
-        level.humans = hs;
-        if (safeSolutionExists(level)) break;
-        level.humans = [];
+        level.count = tiles.length;
       }
     }
-    // 秋は人間必須。捕まらず解ける配置が見つからなければステージごと作り直す
-    if (prof.requireHuman && !relax && !level.humans.length) return null;
+    // 秋はつむじ風必須。安全な配置が見つからなければステージごと作り直す
+    if (prof.requireWhirl && !relax && !tiles.some((t) => t.whirl)) return null;
   }
 
   return level;
@@ -710,13 +740,20 @@ function tryGenerate(rand, n, seed, stage, heights, relax = false) {
 
 // ---------- 最短手数(スピードボーナス用のBFS) ----------
 export function computeMinMoves(level) {
-  // 人間の捕獲は非致死(ニンジンを奪うだけで手数は消費しない)ため、最短手数は人間を無視して計算する
+  // つむじ風での移動は手数0(乗るジャンプの1手だけ)。飛び先は最良ケース(BFSで全候補を展開)。
   const n = level.tiles.length;
   const full = (1 << n) - 1;
   const start = stanceFromTile(level, 0);
   const seen = new Set();
   let frontier = [{ stance: start, mask: full & ~1 }];
   seen.add(start.id + '|' + (full & ~1));
+  const push = (next, stance, mask) => {
+    const k = stance.id + '|' + mask;
+    if (!seen.has(k)) {
+      seen.add(k);
+      next.push({ stance, mask });
+    }
+  };
   for (let moves = 1; moves <= n + 1; moves++) {
     const next = [];
     for (const st of frontier) {
@@ -728,13 +765,20 @@ export function computeMinMoves(level) {
         if (!(st.mask & (1 << i))) continue;
         const t = level.tiles[i];
         if (!canJumpXY(level, s.x, s.y, s.h, s.power, t.x, t.y)) continue;
-        const { stance, eaten } = landStanceM(level, st.mask, s.x, s.y, i);
-        let m2 = st.mask;
-        for (const e of eaten) m2 &= ~(1 << e);
-        const k = stance.id + '|' + m2;
-        if (!seen.has(k)) {
-          seen.add(k);
-          next.push({ stance, mask: m2 });
+        if (t.whirl) {
+          // つむじ風に乗る=1手。飛び先(全候補)はこの手で到達(飛ぶのは手数0)
+          const m1 = st.mask & ~(1 << i);
+          for (const d of whirlDests(level, m1, i)) {
+            const { stance, eaten } = landStanceM(level, m1, t.x, t.y, d);
+            let m2 = m1;
+            for (const e of eaten) m2 &= ~(1 << e);
+            push(next, stance, m2);
+          }
+        } else {
+          const { stance, eaten } = landStanceM(level, st.mask, s.x, s.y, i);
+          let m2 = st.mask;
+          for (const e of eaten) m2 &= ~(1 << e);
+          push(next, stance, m2);
         }
       }
     }
@@ -764,18 +808,24 @@ export function reachableFrom(level, alive, stance) {
 // ---------- ソルバー(デバッグのオートクリア用) ----------
 // 1) ここから全マス回収してゴール(パーフェクト)がまだ可能ならその一手
 // 2) 不可能なら、とにかくゴールへ着けるルートの一手
-// (人間の捕獲は非致死なので手順探索では無視する)
+// つむじ風に乗る手は「クリアできる飛び先が1つでもあれば成立」。返す手順の先頭だけ使う
+// 想定(呼び出し側が1手ごとに再計画する)なので、つむじ風の後は 'whirl' マーカーで打ち切る。
 export function findSolution(level, alive, stance) {
   const n = level.tiles.length;
   let mask = 0;
   for (let i = 0; i < n; i++) if (alive[i]) mask |= 1 << i;
+  const carrotMask = (() => {
+    let c = 0;
+    for (let i = 0; i < n; i++) if (!level.tiles[i].whirl) c |= 1 << i;
+    return c;
+  })();
 
   const search = (needPerfect) => {
     const failed = new Set();
     const dfs = (s, m) => {
       const memoKey = s.id + '|' + m;
       if (failed.has(memoKey)) return null;
-      if (!needPerfect || m === 0) {
+      if (!needPerfect || (m & carrotMask) === 0) {
         if (canJumpXY(level, s.x, s.y, s.h, s.power, level.goal.x, level.goal.y)) {
           return ['goal'];
         }
@@ -784,11 +834,22 @@ export function findSolution(level, alive, stance) {
         if (!(m & (1 << i))) continue;
         const t = level.tiles[i];
         if (!canJumpXY(level, s.x, s.y, s.h, s.power, t.x, t.y)) continue;
-        const { stance: s2, eaten } = landStanceM(level, m, s.x, s.y, i);
-        let nm = m;
-        for (const e of eaten) nm &= ~(1 << e);
-        const rest = dfs(s2, nm);
-        if (rest) return [i, ...rest];
+        if (t.whirl) {
+          // 乗ってクリアできる飛び先があれば、この手(=つむじ風に乗る)を採用
+          const m1 = m & ~(1 << i);
+          for (const d of whirlDests(level, m1, i)) {
+            const { stance: s2, eaten } = landStanceM(level, m1, t.x, t.y, d);
+            let nm = m1;
+            for (const e of eaten) nm &= ~(1 << e);
+            if (dfs(s2, nm)) return [i]; // 飛び先はランダムなので先頭の1手だけ返す
+          }
+        } else {
+          const { stance: s2, eaten } = landStanceM(level, m, s.x, s.y, i);
+          let nm = m;
+          for (const e of eaten) nm &= ~(1 << e);
+          const rest = dfs(s2, nm);
+          if (rest) return [i, ...rest];
+        }
       }
       failed.add(memoKey);
       return null;
