@@ -163,6 +163,12 @@ export class Game {
       this.sfx.click();
       if (this._tut) this._tutEnd(false);
     };
+    $('btn-tut-done').onclick = () => {
+      this.sfx.click();
+      this._hide('modal-tut-done');
+      if (this._tutDoneFromTitle) this._showTitle();
+      else this.newGame();
+    };
     $('btn-continue').onclick = () => {
       this.sfx.click();
       this._openContinue();
@@ -392,7 +398,7 @@ export class Game {
     this._hide('tut-panel');
     $('btn-share').classList.remove('hidden');
     this._cancelClearSeq();
-    for (const id of ['modal-help', 'modal-continue', 'modal-clear', 'modal-over', 'modal-share', 'modal-season', 'modal-version']) {
+    for (const id of ['modal-help', 'modal-continue', 'modal-clear', 'modal-over', 'modal-share', 'modal-season', 'modal-version', 'modal-tut-done']) {
       this._hide(id);
     }
     this._show('screen-title');
@@ -545,9 +551,16 @@ export class Game {
     } catch (e) {}
     this._hide('tut-panel');
     $('btn-share').classList.remove('hidden');
-    if (completed) this._toast('チュートリアルおわり！さあ、ぼうけんへ 🎉', 2200);
-    if (fromTitle) this._showTitle();
-    else this.newGame(); // 初回フロー: そのまま本編スタート
+    // スキップは即座に遷移。完走したら「おつかれさま」の一枚を挟んでボタンで進む
+    if (!completed) {
+      if (fromTitle) this._showTitle();
+      else this.newGame();
+      return;
+    }
+    this.state = 'busy';
+    this._tutDoneFromTitle = fromTitle;
+    $('btn-tut-done').textContent = fromTitle ? 'タイトルへもどる' : 'さっそくあそぶ！';
+    this._show('modal-tut-done');
   }
 
   // ---------- ゲーム進行 ----------
