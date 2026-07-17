@@ -332,6 +332,15 @@ export function makeWhirl() {
   }
   g.userData.spin = spin;
   g.userData.leaves = leaves;
+
+  // タップ判定用の見えない芯。リングは細く隙間だらけで、回転の位相によって
+  // レイ(タップ)が素通りしてしまうため、漏斗全体を覆う不可視シリンダーで受ける。
+  const hit = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.42, 0.42, 1.15, 8),
+    new THREE.MeshBasicMaterial({ visible: false })
+  );
+  hit.position.y = 0.6;
+  g.add(hit);
   return g;
 }
 

@@ -727,6 +727,27 @@ textarea {
   color: var(--orange-dark);
 }
 
+#btn-tut-next {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 8px 30px;
+  border: none;
+  border-bottom: 3px solid #3f7d34;
+  border-radius: 999px;
+  background: linear-gradient(#7ec95c, #5aa843);
+  color: #fff;
+  cursor: pointer;
+}
+
+#btn-tut-next:active {
+  transform: translateY(1px);
+}
+
+#btn-tut-next.hidden {
+  display: none;
+}
+
 #btn-tut-skip {
   font: inherit;
   font-size: 12px;

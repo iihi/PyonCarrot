@@ -169,6 +169,10 @@ export class Game {
       if (this._tutDoneFromTitle) this._showTitle();
       else this.newGame();
     };
+    $('btn-tut-next').onclick = () => {
+      this.sfx.click();
+      if (this._tut) this._tutAdvance();
+    };
     $('btn-continue').onclick = () => {
       this.sfx.click();
       this._openContinue();
@@ -501,6 +505,15 @@ export class Game {
 
   _tutBuildStep() {
     const step = TUTORIAL_STEPS[this._tut.idx];
+    $('tut-step-no').textContent = `チュートリアル ${this._tut.idx + 1} / ${TUTORIAL_STEPS.length}`;
+    $('tut-text').innerHTML = step.text;
+    $('btn-tut-next').classList.toggle('hidden', !step.info);
+    // 読むだけのステップ: 盤面はさわらず(直前のお祝いがそのまま背景)、「つぎへ」で進む
+    if (step.info) {
+      this.state = 'busy';
+      this._hideTutorial(false);
+      return;
+    }
     // 盤面はプレイで書き換わる(eaten等)ので、毎回コピーから作る
     this.level = JSON.parse(JSON.stringify(step.level));
     this.alive = this.level.tiles.map((_, i) => i !== 0);
@@ -511,8 +524,6 @@ export class Game {
     this.scene.buildStage(this.level);
     this.scene.setNumbersVisible(true);
     this.scene.setGridVisible(true);
-    $('tut-step-no').textContent = `チュートリアル ${this._tut.idx + 1} / ${TUTORIAL_STEPS.length}`;
-    $('tut-text').innerHTML = step.text;
     this._hideTutorial(false);
     this._updateHUD(); // ステージ表示を「-」へ即時更新(登場アニメ完了を待たない)
     this._beginEntrance();
@@ -529,7 +540,8 @@ export class Game {
     this.state = 'busy';
     this._updateHUD();
     if (landedId === 'goal') this.sfx.clear();
-    setTimeout(() => this._tutAdvance(), landedId === 'goal' ? 1100 : 500);
+    // 「できた！」を味わってから次へ(切り替わりが早すぎるFB対応)
+    setTimeout(() => this._tutAdvance(), landedId === 'goal' ? 2000 : 1000);
     return true;
   }
 
