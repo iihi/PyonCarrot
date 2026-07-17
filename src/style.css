@@ -22,6 +22,17 @@ body {
     'Segoe UI', system-ui, sans-serif;
   background: #244a2c;
   touch-action: manipulation;
+  /* ゲームUIの文字は選択させない(連打で文字選択になるのを防ぐ) */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* 入力欄だけは通常どおり選択・編集できるように */
+input,
+textarea {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 #game-wrap {
@@ -496,6 +507,8 @@ body {
   max-height: calc(100vh - 40px);
   max-height: calc(100dvh - 40px);
   overflow-y: auto;
+  /* スコアの「ドンッ」演出(scaleで一瞬はみ出す)で横スクロールが出ないように */
+  overflow-x: hidden;
 }
 
 .modal-box h2 {
@@ -671,6 +684,84 @@ body {
 
 #code-input:focus {
   border-color: var(--orange);
+}
+
+/* ---------- チュートリアル(通しコース)の説明パネル ---------- */
+#tut-panel {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 96px; /* 下の操作ボタン列のすぐ上 */
+  z-index: 30;
+  background: rgba(255, 248, 236, 0.96);
+  border: 3px solid var(--green-dark);
+  border-radius: 16px;
+  padding: 10px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  text-align: center;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+}
+
+#tut-panel.hidden {
+  display: none;
+}
+
+#tut-step-no {
+  font-size: 11px;
+  font-weight: 700;
+  color: #8aa07a;
+  letter-spacing: 0.08em;
+}
+
+#tut-text {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--brown);
+  line-height: 1.55;
+}
+
+#tut-text b {
+  color: var(--orange-dark);
+}
+
+#btn-tut-next {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 8px 30px;
+  border: none;
+  border-bottom: 3px solid #3f7d34;
+  border-radius: 999px;
+  background: linear-gradient(#7ec95c, #5aa843);
+  color: #fff;
+  cursor: pointer;
+}
+
+#btn-tut-next:active {
+  transform: translateY(1px);
+}
+
+#btn-tut-next.hidden {
+  display: none;
+}
+
+#btn-tut-skip {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 18px;
+  border: none;
+  border-radius: 999px;
+  background: #9db4c0;
+  color: #fff;
+  cursor: pointer;
+}
+
+#btn-tut-skip:active {
+  transform: translateY(1px);
 }
 
 /* ---------- 段差チュートリアル吹き出し ---------- */

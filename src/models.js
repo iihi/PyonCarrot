@@ -286,6 +286,64 @@ export function makeSled() {
   return { railGroup, cart, floorY };
 }
 
+// ---------- つむじ風(whirl) マス ----------
+// 半透明の輪を漏斗状に積み、scene3d の _frame で回して竜巻に見せる。
+// 乗ると他マスへ飛ばされ、使い切りで消える(ニンジン・数字なし)。
+export function makeWhirl() {
+  const g = new THREE.Group();
+  const spin = new THREE.Group();
+  g.add(spin);
+  const levels = 6;
+  for (let i = 0; i < levels; i++) {
+    const t = i / (levels - 1);
+    const r = 0.12 + t * 0.32; // 上ほど広がる漏斗
+    const tube = 0.035 + t * 0.028;
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(r, tube, 6, 14),
+      mat(0xdfeefc, { transparent: true, opacity: 0.6, roughness: 0.5, depthWrite: false })
+    );
+    ring.rotation.x = Math.PI / 2;
+    ring.rotation.z = t * 1.8; // 少しずつねじる
+    ring.position.y = 0.14 + t * 1.0;
+    spin.add(ring);
+  }
+  // 風に巻かれて舞う木の葉(spinの子なので漏斗と一緒に回る。ひらひらは_frameで)
+  const leafCols = [0xe8632a, 0xf2b13a, 0xc23a3a, 0xff9a3f, 0xd9814f];
+  const lrand = mulberryLocal(1717);
+  const leaves = [];
+  for (let i = 0; i < 10; i++) {
+    const t = lrand();
+    const r = 0.14 + t * 0.3;
+    const a = lrand() * Math.PI * 2;
+    const leaf = mesh(
+      new THREE.CircleGeometry(0.08 + lrand() * 0.05, 5),
+      new THREE.MeshStandardMaterial({
+        color: leafCols[i % leafCols.length],
+        flatShading: true,
+        side: THREE.DoubleSide,
+      }),
+      Math.cos(a) * r,
+      0.18 + lrand() * 0.95,
+      Math.sin(a) * r
+    );
+    leaf.rotation.set(lrand() * Math.PI, lrand() * Math.PI, lrand() * Math.PI);
+    spin.add(leaf);
+    leaves.push(leaf);
+  }
+  g.userData.spin = spin;
+  g.userData.leaves = leaves;
+
+  // タップ判定用の見えない芯。リングは細く隙間だらけで、回転の位相によって
+  // レイ(タップ)が素通りしてしまうため、漏斗全体を覆う不可視シリンダーで受ける。
+  const hit = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.42, 0.42, 1.15, 8),
+    new THREE.MeshBasicMaterial({ visible: false })
+  );
+  hit.position.y = 0.6;
+  g.add(hit);
+  return g;
+}
+
 // 畑マスの土台（土の山＋上面）。ニンジンやジャンプ台はこの上に乗る。
 export function makeMound() {
   const g = new THREE.Group();
@@ -294,11 +352,116 @@ export function makeMound() {
   return g;
 }
 
+// 落ち葉のテクスチャ(Canvasで生成・全落ち葉マスで共有)。
+// 腐葉土の下地に、色とりどりの葉っぱ(尖った楕円+葉脈)を敷き詰めて描く。
+let _leafTex = null;
+function leafTexture() {
+  if (_leafTex !== null) return _leafTex;
+  if (typeof document === 'undefined') {
+    _leafTex = false; // node(書き出しツール)ではテクスチャ無し=単色フォールバック
+    return _leafTex;
+  }
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const ctx = c.getContext('2d');
+  // 下地: 暗めの腐葉土ブラウン(葉が浮き立つように)
+  ctx.fillStyle = '#5f3814';
+  ctx.fillRect(0, 0, 256, 256);
+  const rand = mulberryLocal(777);
+  // 遠目でも分かるよう、彩度高めの秋色
+  const cols = ['#ff7a2a', '#ffc23a', '#e04434', '#ff9a3f', '#e8b02e', '#ffce55', '#d95c22'];
+  // 葉っぱ(両端が尖った楕円)を大きめに重ねる。縁からはみ出す分も描いて継ぎ目を無くす
+  for (let i = 0; i < 55; i++) {
+    const x = rand() * 256;
+    const y = rand() * 256;
+    const a = rand() * Math.PI * 2;
+    const len = 34 + rand() * 26;
+    const wid = len * 0.42;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(a);
+    ctx.fillStyle = cols[Math.floor(rand() * cols.length)];
+    ctx.beginPath();
+    ctx.moveTo(-len / 2, 0);
+    ctx.quadraticCurveTo(0, -wid, len / 2, 0);
+    ctx.quadraticCurveTo(0, wid, -len / 2, 0);
+    ctx.fill();
+    // うっすら影で重なりを出す
+    ctx.strokeStyle = 'rgba(70,35,8,0.35)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    // 中央の葉脈
+    ctx.beginPath();
+    ctx.moveTo(-len / 2 + 2, 0);
+    ctx.lineTo(len / 2 - 2, 0);
+    ctx.strokeStyle = 'rgba(90,45,10,0.55)';
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    ctx.restore();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  _leafTex = tex;
+  return _leafTex;
+}
+
+// 落ち葉マスの土台（つむじ風の対＝飛ばされる先）。
+// 落ち葉テクスチャを上面と側面に貼った「積もった落ち葉の山」。機能は畑マスと同じ。
+export function makeLeafBase() {
+  const g = new THREE.Group();
+  const tex = leafTexture();
+  const leafMat = (fallback) =>
+    tex
+      ? new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, flatShading: true })
+      : mat(fallback);
+  const sideM = leafMat(0xc9722e);
+  const topM = leafMat(0xdd8f3a);
+  // 山本体(側面・上面ともテクスチャ)
+  const pile = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.5, 0.2, 10), [
+    sideM,
+    topM,
+    sideM,
+  ]);
+  pile.position.y = 0.1;
+  pile.castShadow = true;
+  pile.receiveShadow = true;
+  g.add(pile);
+  // ふちから大きめの葉が数枚はみ出して、シルエットでも落ち葉と分かるように
+  const rimCols = [0xff7a2a, 0xffc23a, 0xe04434, 0xff9a3f];
+  const rand = mulberryLocal(4242);
+  for (let i = 0; i < 7; i++) {
+    const ang = (i / 7) * Math.PI * 2 + rand() * 0.5;
+    const leaf = mesh(
+      new THREE.CircleGeometry(0.12 + rand() * 0.06, 5),
+      new THREE.MeshStandardMaterial({
+        color: rimCols[i % rimCols.length],
+        flatShading: true,
+        side: THREE.DoubleSide,
+      }),
+      Math.cos(ang) * 0.46,
+      0.16 + rand() * 0.05,
+      Math.sin(ang) * 0.46
+    );
+    leaf.rotation.x = -Math.PI / 2 + (rand() - 0.5) * 0.5;
+    leaf.rotation.z = rand() * Math.PI;
+    g.add(leaf);
+  }
+  return g;
+}
+
 export function makeTile(tile) {
   const g = new THREE.Group();
   const value = tile.value;
 
+  // 落ち葉マス(つむじ風の対)は「普通の土台の上に落ち葉が積もっている」2層構造。
+  // つむじ風が着くと落ち葉(leafPile)が吹き飛んで、下から普通の畑マスが現れる。
   g.add(makeMound());
+  if (tile.leaf) {
+    const pile = makeLeafBase();
+    pile.scale.set(1.06, 1.15, 1.06); // 土台をしっかり覆う
+    g.userData.leafPile = pile;
+    g.add(pile);
+  }
 
   // ジャンプ台: 土台の上に赤いコイルバネ+天板。ニンジンは天板の上に乗る
   let carrotLift = 0;
@@ -411,45 +574,6 @@ export function makeGoalRabbit() {
   return outer;
 }
 
-// ---------- 人間（畑を見張る農夫。見ている向き＝ローカル+z） ----------
-export function makeHuman() {
-  const g = new THREE.Group();
-  const inner = new THREE.Group();
-  g.add(inner);
-  const skin = mat(0xf1c39c);
-  const shirt = mat(0xd8503f); // 赤いシャツ
-  const overalls = mat(0x37589a); // 青いつなぎ
-  const straw = mat(0xe8c66a); // 麦わら帽子
-  const dark = mat(0x2b2b2b, { roughness: 0.4 });
-
-  // 脚
-  for (const s of [-1, 1]) {
-    inner.add(mesh(new THREE.BoxGeometry(0.16, 0.34, 0.18), overalls, s * 0.11, 0.17, 0));
-  }
-  // 胴(シャツ)＋つなぎの胸当て
-  inner.add(mesh(new THREE.BoxGeometry(0.42, 0.4, 0.28), shirt, 0, 0.56, 0));
-  inner.add(mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), overalls, 0, 0.5, 0.006));
-  // 腕
-  for (const s of [-1, 1]) {
-    const arm = mesh(new THREE.BoxGeometry(0.12, 0.36, 0.14), shirt, s * 0.29, 0.55, 0);
-    arm.rotation.z = s * 0.12;
-    inner.add(arm);
-  }
-  // 首・頭
-  inner.add(mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.06, 6), skin, 0, 0.78, 0));
-  inner.add(mesh(new THREE.SphereGeometry(0.19, 8, 7), skin, 0, 0.94, 0));
-  // 目(顔＝+z 側)
-  for (const s of [-1, 1]) {
-    inner.add(mesh(new THREE.SphereGeometry(0.028, 6, 5), dark, s * 0.07, 0.96, 0.17));
-  }
-  // 麦わら帽子(つば＋山)
-  inner.add(mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.03, 12), straw, 0, 1.06, 0));
-  inner.add(mesh(new THREE.CylinderGeometry(0.15, 0.17, 0.14, 10), straw, 0, 1.13, 0));
-
-  g.userData.inner = inner;
-  return g;
-}
-
 // ---------- ゴール（ピンクウサギ＋花の台座＋旗） ----------
 export function makeGoal() {
   const g = new THREE.Group();
@@ -523,20 +647,22 @@ export function makeGoal() {
 
 // ---------- 段差地形（段々畑） ----------
 // 高さレベルごとに色を一段ずつ変えて、パッと見で段数が分かるようにする。
-// 通常季は緑(上るほど明るい黄緑)＋茶の側面。冬は雪＝白基調で、高さが上がるほど
-// 少しずつ青(氷河色)を濃くする。側面も雪色にする(冬は盛り上がりも雪、というFB対応)。
-const TERRACE_TOP = [0, 0x9ad35f, 0xbfe27f, 0xe2f0a2];
-const TERRACE_SIDE = 0x8a5a30;
-// 冬(氷河)パレット: 上面は白→薄氷青→氷河青、側面は影になった氷色
-const TERRACE_TOP_WINTER = [0, 0xd6ebf8, 0xbfe0f4, 0x8fc7ec];
-const TERRACE_SIDE_WINTER = 0xabcde2;
+// 季節ごとのパレット(top=高さ1..3の上面色 / side=側面色):
+//  春=明るい黄緑(上るほど明るい)、夏=濃い緑(上るほど濃い)、
+//  秋=茶色(上るほど濃い)、冬=雪(上るほど氷河の青が濃い。側面も雪色)
+const TERRACE_PALETTES = {
+  spring: { top: [0, 0x9ad35f, 0xbfe27f, 0xe2f0a2], side: 0x8a5a30 },
+  summer: { top: [0, 0x4ea840, 0x3c9033, 0x2c7a27], side: 0x6f4f2a },
+  autumn: { top: [0, 0xbd8a45, 0x9e6f34, 0x7d5526], side: 0x6b4526 },
+  winter: { top: [0, 0xd6ebf8, 0xbfe0f4, 0x8fc7ec], side: 0xabcde2 },
+};
 
 export function makeTerrain(heights, season = 'spring') {
   const g = new THREE.Group();
   const c = (GRID - 1) / 2;
-  const winter = season === 'winter';
-  const topPalette = winter ? TERRACE_TOP_WINTER : TERRACE_TOP;
-  const sideMat = mat(winter ? TERRACE_SIDE_WINTER : TERRACE_SIDE);
+  const pal = TERRACE_PALETTES[season] || TERRACE_PALETTES.spring;
+  const topPalette = pal.top;
+  const sideMat = mat(pal.side);
   const gridVerts = [];
   for (let x = 0; x < GRID; x++) {
     for (let y = 0; y < GRID; y++) {

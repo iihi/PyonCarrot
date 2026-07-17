@@ -9,11 +9,10 @@ import {
   parseCode,
   GOLD_MULT,
   seasonForStage,
-  caughtBy,
-  humanDangerCells,
 } from './level.js';
 import { GameScene } from './scene3d.js';
 import { Sfx } from './sfx.js';
+import { TUTORIAL_STEPS } from './tutorial.js';
 
 const SAVE_KEY = 'pyoncarrot_save_v1';
 
@@ -27,7 +26,7 @@ const retryMult = (r) => (r === 0 ? 1.5 : r >= 3 ? 0.5 : 1.0); // リトライ�
 const SEASON_INTRO = {
   spring: { emoji: '🌸', name: '春', color: '#ff9ec7', text: 'まずは基本！<br>ニンジンを集めて、ゴールでまつ<b>ピンクのウサギ</b>をめざそう。' },
   summer: { emoji: '☀️', name: '夏', color: '#2fb2e0', text: '<b>ジャンプ台</b>とうじょう！<br>のって飛ぶと<b>2マス遠く</b>までとべるよ。' },
-  autumn: { emoji: '🍂', name: '秋', color: '#e0842f', text: '<b>人間</b>があらわれた！<br>人間が<b>見ている方向</b>に降りると、走ってきて捕まる。<br>ジャンプするたびに人間の向きが変わるよ。' },
+  autumn: { emoji: '🍂', name: '秋', color: '#e0842f', text: '<b>つむじ風</b>があらわれた！<br>のると対(つい)の<b>落ち葉マス</b>まで<br>ビュ〜ンと運ばれるよ。' },
   winter: { emoji: '❄️', name: '冬', color: '#4aa3d6', text: '<b>ソリ</b>にのって、進んだ方向へすべって、<br>かべ(段差や畑)の手前で止まる。<br>止まった所から<b>数字ぶん</b>ジャンプ！' },
   allin: { emoji: '🎊', name: 'ぜんぶ！', color: '#7c5cff', text: 'ここからは<b>ぜんぶ</b>でてくる！' },
 };
@@ -53,6 +52,10 @@ export class Game {
     this._bindDebug();
     this._loadSettings();
     this._showTitle();
+
+    // シェアカード用にロゴを先読み(失敗しても文字で代替するので待たない)
+    this._logoImg = new Image();
+    this._logoImg.src = './logo.png';
 
     // 初回のタップ/クリックでiOSのオーディオを解錠する
     window.addEventListener(
@@ -144,7 +147,31 @@ export class Game {
   _bindUI() {
     $('btn-start').onclick = () => {
       this.sfx.click();
-      this.newGame();
+      // 初回だけチュートリアルを先に通す(完走/スキップで以降は出ない)
+      let seen = false;
+      try {
+        seen = !!localStorage.getItem(SAVE_KEY + '_tut_seen');
+      } catch (e) {}
+      if (!seen) this._startTutorial(false);
+      else this.newGame();
+    };
+    $('btn-tutorial').onclick = () => {
+      this.sfx.click();
+      this._startTutorial(true);
+    };
+    $('btn-tut-skip').onclick = () => {
+      this.sfx.click();
+      if (this._tut) this._tutEnd(false);
+    };
+    $('btn-tut-done').onclick = () => {
+      this.sfx.click();
+      this._hide('modal-tut-done');
+      if (this._tutDoneFromTitle) this._showTitle();
+      else this.newGame();
+    };
+    $('btn-tut-next').onclick = () => {
+      this.sfx.click();
+      if (this._tut) this._tutAdvance();
     };
     $('btn-continue').onclick = () => {
       this.sfx.click();
@@ -237,6 +264,11 @@ export class Game {
       this.sfx.click();
       $('share-code').textContent = makeCode(this.seed, this.stage);
       this._show('modal-share');
+    };
+    // SNSシェア(結果カード画像+テキストをOSの共有シートへ)
+    $('btn-clear-share').onclick = () => {
+      this.sfx.click();
+      this._shareResult();
     };
     // 演出中にダイアログをタップしたら最後まで一気に表示
     $('modal-clear').addEventListener('click', (e) => {
@@ -365,8 +397,12 @@ export class Game {
     this.sfx.stopBgm(); // タイトルに戻ったらBGMは止める
     this._lastIntroKey = null; // 次に始めたら季節説明を出し直す
     this._hideTutorial(false);
+    // チュートリアル途中でタイトルへ戻ったら中断(次の「はじめから」でまた出る)
+    this._tut = null;
+    this._hide('tut-panel');
+    $('btn-share').classList.remove('hidden');
     this._cancelClearSeq();
-    for (const id of ['modal-help', 'modal-continue', 'modal-clear', 'modal-over', 'modal-share', 'modal-season', 'modal-version']) {
+    for (const id of ['modal-help', 'modal-continue', 'modal-clear', 'modal-over', 'modal-share', 'modal-season', 'modal-version', 'modal-tut-done']) {
       this._hide(id);
     }
     this._show('screen-title');
@@ -451,6 +487,94 @@ export class Game {
     }
   }
 
+  // ---------- チュートリアル(通しコース) ----------
+  // 基本3ステップ+ギミック4ステップを、手書きの極小盤面で順に体験する。
+  // 入り口は2つ: 初回の「はじめから」(フラグ保存で1回だけ) と タイトルの「チュートリアル」。
+  // 本編の状態(セーブ・スコア・コード)には一切触らない。
+  _startTutorial(fromTitle) {
+    this._tut = { on: true, fromTitle, idx: 0 };
+    this.sfx.startBgm();
+    this._hide('screen-title');
+    this._hide('modal-help');
+    this._show('hud');
+    $('btn-share').classList.add('hidden'); // コードは意味がないので隠す
+    $('btn-tut-skip').textContent = fromTitle ? 'スキップしてタイトルへ' : 'スキップしてゲームへ';
+    this._show('tut-panel');
+    this._tutBuildStep();
+  }
+
+  _tutBuildStep() {
+    const step = TUTORIAL_STEPS[this._tut.idx];
+    $('tut-step-no').textContent = `チュートリアル ${this._tut.idx + 1} / ${TUTORIAL_STEPS.length}`;
+    $('tut-text').innerHTML = step.text;
+    $('btn-tut-next').classList.toggle('hidden', !step.info);
+    // 読むだけのステップ: 盤面はさわらず(直前のお祝いがそのまま背景)、「つぎへ」で進む
+    if (step.info) {
+      this.state = 'busy';
+      this._hideTutorial(false);
+      return;
+    }
+    // 盤面はプレイで書き換わる(eaten等)ので、毎回コピーから作る
+    this.level = JSON.parse(JSON.stringify(step.level));
+    this.alive = this.level.tiles.map((_, i) => i !== 0);
+    this.curIdx = 0;
+    this.stance = stanceFromTile(this.level, 0);
+    this.carrots = 0;
+    this.moves = 0;
+    this.scene.buildStage(this.level);
+    this.scene.setNumbersVisible(true);
+    this.scene.setGridVisible(true);
+    this._hideTutorial(false);
+    this._updateHUD(); // ステージ表示を「-」へ即時更新(登場アニメ完了を待たない)
+    this._beginEntrance();
+  }
+
+  // 移動が確定するたびに完了条件をチェック。完了なら次のステップへ(trueを返す)。
+  _tutAfterMove(landedId) {
+    const step = TUTORIAL_STEPS[this._tut.idx];
+    const d = step.done;
+    const hit =
+      (d.on === 'goal' && landedId === 'goal') ||
+      (d.on === 'tile' && landedId === d.idx);
+    if (!hit) return false;
+    this.state = 'busy';
+    this._updateHUD();
+    if (landedId === 'goal') this.sfx.clear();
+    // 「できた！」を味わってから次へ(切り替わりが早すぎるFB対応)
+    setTimeout(() => this._tutAdvance(), landedId === 'goal' ? 2000 : 1000);
+    return true;
+  }
+
+  _tutAdvance() {
+    if (!this._tut) return; // スキップ等で終了済み
+    this._tut.idx++;
+    if (this._tut.idx >= TUTORIAL_STEPS.length) {
+      this._tutEnd(true);
+      return;
+    }
+    this._tutBuildStep();
+  }
+
+  _tutEnd(completed) {
+    const fromTitle = this._tut && this._tut.fromTitle;
+    this._tut = null;
+    try {
+      localStorage.setItem(SAVE_KEY + '_tut_seen', '1');
+    } catch (e) {}
+    this._hide('tut-panel');
+    $('btn-share').classList.remove('hidden');
+    // スキップは即座に遷移。完走したら「おつかれさま」の一枚を挟んでボタンで進む
+    if (!completed) {
+      if (fromTitle) this._showTitle();
+      else this.newGame();
+      return;
+    }
+    this.state = 'busy';
+    this._tutDoneFromTitle = fromTitle;
+    $('btn-tut-done').textContent = fromTitle ? 'タイトルへもどる' : 'さっそくあそぶ！';
+    this._show('modal-tut-done');
+  }
+
   // ---------- ゲーム進行 ----------
   newGame() {
     this.seed = 1000 + Math.floor(Math.random() * 9000);
@@ -468,7 +592,6 @@ export class Game {
     this.curIdx = 0; // 立っているマス(空きマスなら -1)
     this.stance = stanceFromTile(this.level, 0);
     this.carrots = 0; // ニンジンは持ち越さない
-    this.jumps = 0; // これまでのジャンプ回数(人間の向きの計算に使う)
     this.moves = 0; // これまでの手数(スピードボーナス用)
 
     this._hide('screen-title');
@@ -530,6 +653,11 @@ export class Game {
 
   retryStage() {
     if (this.state === 'busy') return;
+    // チュートリアル中は同じステップをやり直すだけ(回数もスコアも関係なし)
+    if (this._tut && this._tut.on) {
+      this._tutBuildStep();
+      return;
+    }
     this.retryCount++;
     this.startStage();
   }
@@ -564,6 +692,8 @@ export class Game {
   // 段差・ジャンプ台・トロッコが初めて登場するステージで、該当マスに吹き出しを出す。
   // ウサギを動かしたら消えて、以降は表示しない。1ステージにつき1件（優先順）。
   _maybeShowGimmickTutorial() {
+    // 通しチュートリアル中は説明パネルがあるので吹き出しは出さない
+    if (this._tut && this._tut.on) return;
     const TUTS = [
       {
         flag: '_tut_h',
@@ -584,11 +714,10 @@ export class Game {
         html: '🛒 <b>トロッコ</b>のマス！乗ると<b>進んだ方向</b>へ<br />走って、かべ(段差や畑)の手前で止まるよ。<br />止まった所から<b>数字ぶん</b>ジャンプ！',
       },
       {
-        flag: '_tut_human',
-        src: 'humans',
-        pick: () => true,
+        flag: '_tut_whirl',
+        pick: (t) => !!t.whirl,
         prefer: () => 0,
-        html: '👨‍🌾 <b>人間</b>！見ている方向(<b>赤いマス</b>)に<br />降りると走ってきて捕まる。<br />ジャンプするたびに向きが90°変わるよ',
+        html: '🌪️ <b>つむじ風</b>のマス！のると対(つい)の<br /><b>落ち葉マス</b>までビュ〜ンと運ばれるよ',
       },
     ];
 
@@ -596,10 +725,7 @@ export class Game {
       try {
         if (localStorage.getItem(SAVE_KEY + tut.flag)) continue;
       } catch (e) {}
-      const cands =
-        tut.src === 'humans'
-          ? this.level.humans || []
-          : this.level.tiles.filter(tut.pick);
+      const cands = this.level.tiles.filter(tut.pick);
       if (!cands.length) continue;
 
       const cw = this.scene.canvas.clientWidth;
@@ -654,7 +780,7 @@ export class Game {
 
   // ---------- HUD ----------
   _updateHUD() {
-    $('hud-stage').textContent = this.stage;
+    $('hud-stage').textContent = this._tut && this._tut.on ? '-' : this.stage;
     $('hud-score').textContent = fmt(this.score);
     $('hud-count').textContent = this.carrots;
   }
@@ -662,9 +788,6 @@ export class Game {
   _updateReachable() {
     this.reachable = reachableFrom(this.level, this.alive, this.stance);
     this.scene.setReachable(this.reachable);
-    // 人間の向き＆危険マス(赤)を今のジャンプ回数で更新
-    this.scene.setHumanFacing(this.jumps);
-    this.scene.setDanger(humanDangerCells(this.level, this.jumps));
     // 空きマス(トロッコ降車後)ではそのマスに次のジャンプ力を表示
     this.scene.setRabbitNumber(
       this.curIdx === -1 ? this.stance.power : null,
@@ -673,6 +796,13 @@ export class Game {
     );
 
     if (this.reachable.length === 0) {
+      // チュートリアル中はゲームオーバーにせず、同じステップをやり直す
+      if (this._tut && this._tut.on) {
+        this.state = 'busy';
+        this._toast('もういちど やってみよう！');
+        setTimeout(() => this._tut && this._tutBuildStep(), 900);
+        return;
+      }
       // 詰み
       this.state = 'over';
       this.scene.sadHop();
@@ -709,13 +839,42 @@ export class Game {
     this.moves++;
 
     if (id === 'goal') {
+      if (this._tut && this._tut.on) {
+        // チュートリアル中はスコア画面を出さず、お祝いだけして次のステップへ
+        this.scene.celebrate();
+        this._tutAfterMove('goal');
+        return;
+      }
       this._onClear();
       return;
     }
 
     const tile = this.level.tiles[id];
     for (const idx of landInfo.eaten) this.alive[idx] = false;
+
+    // つむじ風マス: うさぎを包んで対の落ち葉マスまで運び、風は画面外へ飛び去る。
+    // 落ち葉マスでは通常着地と同じ処理(ニンジンを食べて数字が次のジャンプ力)。
+    if (tile.whirl) {
+      const leafIdx = tile.pair;
+      await this.scene.whirlCarry(id, leafIdx);
+      this.sfx.land();
+      this._eatTile(leafIdx); // 運ばれた先の落ち葉マスのニンジンをパクッ
+      this.stance = landInfo.stance;
+      this.curIdx = leafIdx;
+      this.scene.setOnSpring(!!this.level.tiles[leafIdx].spring);
+      if (this._tut && this._tut.on && this._tutAfterMove(id)) return;
+      this.state = 'playing';
+      this._updateHUD();
+      this._updateReachable();
+      return;
+    }
+
     this._eatTile(id); // 着地マス(トロッコ本体)のニンジンをパクッ
+
+    // 落ち葉マスに直接乗った場合、対のつむじ風は使えなくなり画面外へ飛び去る
+    if (tile.pairWhirl != null && landInfo.eaten.includes(tile.pairWhirl)) {
+      this.scene.whirlFlee(tile.pairWhirl);
+    }
 
     // トロッコ: レール方向へ運ばれ、段差/端の手前で大破 → 空きマスに降りる
     if (tile.cart) {
@@ -726,31 +885,126 @@ export class Game {
     this.stance = landInfo.stance;
     this.curIdx = tile.cart ? -1 : id;
 
-    // 人間はジャンプのたびに90°回る。着地と同時に回って、その「回ったあとの向き」の
-    // 赤いラインにうさぎが重なったら捕まる(非致死=ニンジンを全部奪われる)
-    this.jumps++;
-    const caught = caughtBy(this.level, this.stance.x, this.stance.y, this.jumps);
-    if (caught >= 0) {
-      // 人間が回って新しい赤ラインが出た瞬間に着地が重なった
-      this.scene.setHumanFacing(this.jumps);
-      this.scene.setDanger(humanDangerCells(this.level, this.jumps));
-      const human = this.level.humans[caught];
-      await this.scene.humanApproach(human);
-      const lost = this.carrots;
-      this.sfx.thud();
-      if (lost > 0) this.scene.scatterCarrots(this.stance, lost);
-      this.carrots = 0;
-      this.scene.removeHuman(human); // 奪ったら人間は退場
-      this.level.humans.splice(caught, 1);
-      this._caughtCount = (this._caughtCount || 0) + 1;
-      this._updateHUD();
-    }
-
     this.scene.setOnSpring(this.curIdx >= 0 && this.level.tiles[this.curIdx].spring);
+
+    if (this._tut && this._tut.on && this._tutAfterMove(id)) return;
 
     this.state = 'playing';
     this._updateHUD();
     this._updateReachable();
+  }
+
+  // ---------- SNSシェア ----------
+  // 結果カード(ロゴ+成績のみの横長バナー。盤面は入れない)をPNGに合成する
+  _buildShareCard() {
+    const W = 1080;
+    const H = 320;
+    const c = document.createElement('canvas');
+    c.width = W;
+    c.height = H;
+    const ctx = c.getContext('2d');
+
+    // 背景: 緑地に斜めの格子模様
+    ctx.fillStyle = '#82c15e';
+    ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = 'rgba(25, 80, 15, 0.10)';
+    ctx.lineWidth = 3;
+    const step = 46;
+    for (let i = -H; i < W + H; i += step) {
+      ctx.beginPath();
+      ctx.moveTo(i, 0);
+      ctx.lineTo(i + H, H);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(i + H, 0);
+      ctx.lineTo(i, H);
+      ctx.stroke();
+    }
+
+    // 白の角丸パネル
+    const px = 18, py = 18, pw = W - 36, ph = H - 36, r = 42;
+    ctx.beginPath();
+    ctx.moveTo(px + r, py);
+    ctx.arcTo(px + pw, py, px + pw, py + ph, r);
+    ctx.arcTo(px + pw, py + ph, px, py + ph, r);
+    ctx.arcTo(px, py + ph, px, py, r);
+    ctx.arcTo(px, py, px + pw, py, r);
+    ctx.closePath();
+    ctx.fillStyle = '#fefefa';
+    ctx.fill();
+
+    const font = (size, weight = 'bold') =>
+      `${weight} ${size}px 'Hiragino Maru Gothic ProN','BIZ UDGothic','Yu Gothic UI',sans-serif`;
+    ctx.textBaseline = 'middle';
+
+    // ロゴ(読み込めていなければタイトル文字で代替)
+    const logo = this._logoImg;
+    let tx = px + 48;
+    if (logo && logo.complete && logo.naturalWidth) {
+      const lh = ph - 36;
+      const lw = (logo.naturalWidth / logo.naturalHeight) * lh;
+      ctx.drawImage(logo, px + 24, py + (ph - lh) / 2, lw, lh);
+      tx = px + 24 + lw + 44;
+    } else {
+      ctx.fillStyle = '#e8760f';
+      ctx.font = font(44);
+      ctx.fillText(document.title, tx, py + 50);
+    }
+
+    // 成績(文言は仮。決まったらここを差し替える)
+    ctx.fillStyle = '#3a9d43';
+    ctx.font = font(62);
+    ctx.fillText(`STAGE ${this.stage} クリア！`, tx, py + 62);
+    ctx.fillStyle = '#e8760f';
+    ctx.font = font(56);
+    ctx.fillText(`SCORE ${fmt(this.score)}`, tx, py + 142);
+    ctx.fillStyle = '#7d7d78';
+    ctx.font = font(44, 'normal');
+    ctx.fillText(`コード: ${makeCode(this.seed, this.stage)}`, tx, py + 218);
+
+    return new Promise((resolve) => c.toBlob(resolve, 'image/png'));
+  }
+
+  // スマホ: OSの共有シート(画像+テキスト)へ。ユーザーがX/Instagram等を選ぶ。
+  // 非対応環境(PC等)は画像DL+テキストコピーにフォールバック。
+  async _shareResult() {
+    const code = makeCode(this.seed, this.stage);
+    const isWeb =
+      /^https?:$/.test(location.protocol) && !/^(localhost|127\.)/.test(location.hostname);
+    const url = isWeb ? location.origin + location.pathname : '';
+    const text = `${document.title} STAGE ${this.stage} クリア！\nSCORE ${fmt(this.score)} ／ ステージコード: ${code}\n#ぴょんぴょんキャロット`;
+    const full = url ? `${text}\n${url}` : text;
+
+    let blob = null;
+    try {
+      blob = await this._buildShareCard();
+    } catch (e) {}
+
+    if (blob && navigator.canShare) {
+      const file = new File([blob], 'pyonpyon-result.png', { type: 'image/png' });
+      if (navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], text: full });
+          return;
+        } catch (e) {
+          if (e && e.name === 'AbortError') return; // ユーザーが共有をやめた
+        }
+      }
+    }
+    // フォールバック: 画像を保存してテキストをコピー
+    if (blob) {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'pyonpyon-result.png';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    }
+    try {
+      await navigator.clipboard.writeText(full);
+    } catch (e) {}
+    this._toast('画像を保存して、シェア用テキストをコピーしました', 2600);
   }
 
   // 一度だけ出す説明トースト
@@ -769,7 +1023,7 @@ export class Game {
 
     // スコア計算: (残ニンジン×10 + パーフェクト + スピード) × リトライ倍率
     const carrotBonus = this.carrots * SCORE_PER_CARROT;
-    const perfect = this.level.tiles.every((t) => t.eaten) ? PERFECT_BONUS : 0;
+    const perfect = this.level.tiles.every((t) => t.whirl || t.eaten) ? PERFECT_BONUS : 0;
     const speed = this.moves <= this.level.minMoves + 1 ? SPEED_BONUS : 0;
     const mult = retryMult(this.retryCount);
     const gain = Math.round((carrotBonus + perfect + speed) * mult);

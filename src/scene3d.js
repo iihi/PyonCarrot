@@ -9,11 +9,11 @@ import {
   makeNumberSprite,
   makeRing,
   makeTerrain,
-  makeHuman,
+  makeWhirl,
   SEASON_BG,
   HSTEP,
 } from './models.js';
-import { GRID, humanFacingVec } from './level.js';
+import { GRID } from './level.js';
 
 const easeOut = (t) => 1 - Math.pow(1 - t, 3);
 const easeInOut = (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
@@ -71,9 +71,6 @@ export class GameScene {
     this.tileMeshes = [];
     this.goalMesh = null;
     this.minis = []; // にぎやかしの極小ウサギ
-    this.humans = []; // 見張りの人間
-    this.dangerMeshes = []; // 人間の視線(危険マス)の赤い地面
-    this.dangerTileIds = new Set(); // 危険マス上の畑(赤く塗る対象)
     this.reachIds = []; // 今飛べるマス(明滅で示す)
     this.hintId = null; // ヒント対象(別色で明滅)
     this._activeHi = new Set(); // 前フレームで発光中だったマス(戻し用)
@@ -160,9 +157,6 @@ export class GameScene {
     this.setRabbitNumber(null);
     for (const t of this.tileMeshes) this.world.remove(t.group);
     if (this.goalMesh) this.world.remove(this.goalMesh);
-    for (const h of this.humans) this.world.remove(h.group);
-    this.humans = [];
-    this.setDanger([]);
     this.clearRings();
     this.clearHint();
     this.tweens = [];
@@ -187,12 +181,15 @@ export class GameScene {
 
     this.onSpring = false;
     level.tiles.forEach((t, i) => {
-      const group = makeTile(t);
+      const group = t.whirl ? makeWhirl() : makeTile(t);
       const baseY = this._cellY(t.x, t.y);
       group.position.copy(this.worldPos(t.x, t.y, baseY));
-      const number = makeNumberSprite(t.value);
-      number.visible = this.numbersVisible;
-      group.add(number);
+      // つむじ風マスは数字・ニンジンなし
+      const number = t.whirl ? null : makeNumberSprite(t.value);
+      if (number) {
+        number.visible = this.numbersVisible;
+        group.add(number);
+      }
       this.world.add(group);
       this.tileMeshes.push({
         group,
@@ -201,6 +198,7 @@ export class GameScene {
         idx: i,
         alive: true,
         spring: !!t.spring,
+        whirl: !!t.whirl,
       });
 
       // 登場アニメーション
@@ -221,16 +219,6 @@ export class GameScene {
     this.tween(0.5, level.tiles.length * 0.03, easeOut, (k) => {
       this.goalMesh.scale.setScalar(Math.max(k, 0.01));
     });
-
-    // 見張りの人間
-    for (const hu of level.humans || []) {
-      const group = makeHuman();
-      const base = this.worldPos(hu.x, hu.y, this._cellY(hu.x, hu.y));
-      group.position.copy(base);
-      this.world.add(group);
-      this.humans.push({ group, data: hu, base });
-    }
-    this.setHumanFacing(0);
 
     // ハイライト用に各マス・ゴールの元の発光を控えておく
     const grabEmissive = (group) => {
@@ -496,7 +484,6 @@ export class GameScene {
     const pts = [
       ...this.level.tiles.map((t) => this.worldPos(t.x, t.y)),
       this.worldPos(this.level.goal.x, this.level.goal.y),
-      ...(this.level.humans || []).map((h) => this.worldPos(h.x, h.y)),
     ];
     // トロッコ/ソリはレール方向へ運ばれる。停止セルが空きマスでタイル範囲の外だと
     // 乗ったときにウサギが画面外に出てしまうので、停止セルも画面に含める。
@@ -590,141 +577,146 @@ export class GameScene {
     this.hintId = null;
   }
 
-  // ---------- 人間ギミック ----------
-  // 各人間を「これまでのジャンプ回数 jumps に応じた向き」へ回す。
-  // (捕獲演出で動いた位置も基準セルへ戻す)
-  setHumanFacing(jumps) {
-    for (const h of this.humans) {
-      h.group.position.copy(h.base);
-      const [dx, dy] = humanFacingVec(h.data, jumps);
-      const target = Math.atan2(dx, dy);
-      const cur = h.group.rotation.y;
-      const delta = Math.atan2(Math.sin(target - cur), Math.cos(target - cur));
-      const tag = 'human' + h.data.x + '_' + h.data.y;
-      this.killTweens(tag);
-      this.tween(
-        0.22,
-        0,
-        easeOut,
-        (k) => {
-          h.group.rotation.y = cur + delta * k;
-        },
-        () => {
-          h.group.rotation.y = target;
-        },
-        tag
-      );
-    }
+  // ---------- つむじ風 ----------
+  // つむじ風が画面外へ飛び去る(共通処理)。盤面中心から離れる向きへ上昇しつつ消える。
+  _whirlExit(whirlIdx, delay = 0) {
+    const wt = this.tileMeshes[whirlIdx];
+    if (!wt || !wt.group.visible) return;
+    const g = wt.group;
+    const spin = g.userData.spin;
+    const p0 = g.position.clone();
+    const center = this.fitCenter || new THREE.Vector3();
+    let dx = p0.x - center.x;
+    let dz = p0.z - center.z;
+    const len = Math.hypot(dx, dz) || 1;
+    dx /= len;
+    dz /= len;
+    const dist = (this.viewHalfW || 8) + 5; // 確実に画面外まで
+    this.killTweens('tile' + whirlIdx);
+    this.tween(1.0, delay, (t) => t, (k) => {
+      g.position.set(p0.x + dx * dist * k, p0.y + 1.6 * k, p0.z + dz * dist * k);
+      if (spin) spin.rotation.y += 0.35; // 飛び去りながら勢いよく回る
+      const fade = Math.max(0, 1 - k * 1.15);
+      g.traverse((o) => {
+        if (!o.material) return;
+        const m = o.material;
+        // 初回に元の不透明度を控えて、リングも中の葉もまとめてフェード
+        if (m.userData.baseOp === undefined) {
+          m.userData.baseOp = m.transparent ? m.opacity : 1;
+          m.transparent = true;
+        }
+        m.opacity = m.userData.baseOp * fade;
+      });
+    }, () => {
+      wt.alive = false;
+      g.visible = false;
+    }, 'tile' + whirlIdx);
   }
 
-  // 危険マス(人間の視線): 地面を赤い半透明で表示し、そのマスの畑は _frame で赤く塗る。
-  // (点滅なし・半透明。depthTestありなので斜めで他マスににじまない)
-  setDanger(cells) {
-    for (const m of this.dangerMeshes) {
-      this.world.remove(m);
-      m.geometry.dispose();
-      m.material.dispose();
-    }
-    this.dangerMeshes = [];
-    this.dangerTileIds = new Set();
-    if (!cells.length) return; // 掃除だけ(buildStageのクリア時など)は以降を触らない
-    const tileAtCell = new Map();
-    this.tileMeshes.forEach((tm, i) => {
-      const t = this.level.tiles[i]; // 旧メッシュ×新levelのズレに備えてガード
-      if (tm.alive && t) tileAtCell.set(t.x + ',' + t.y, i);
+  // つむじ風マス(whirlIdx)に乗ったウサギを、風が包んだまま対の落ち葉マス(leafIdx)へ運ぶ。
+  // うさぎを落とすと風はそのまま画面外へ飛び去る。
+  whirlCarry(whirlIdx, leafIdx) {
+    return new Promise((resolve) => {
+      const wt = this.tileMeshes[whirlIdx];
+      const dest = this.level.tiles[leafIdx];
+      const p0 = this.rabbit.position.clone();
+      const p1 = this.worldPos(dest.x, dest.y, this._standY(dest.x, dest.y));
+      const baseRotY = this.rabbit.rotation.y;
+      const g = wt ? wt.group : null;
+      const spin = g ? g.userData.spin : null;
+      const gp0 = g ? g.position.clone() : null;
+      this.killTweens('rabbit');
+      if (g) this.killTweens('tile' + whirlIdx);
+
+      // 風がうさぎを包んだまま一緒に弧を描いて移動。うさぎは中でグルグル回る
+      this.tween(0.95, 0, easeInOut, (k) => {
+        this.rabbit.position.lerpVectors(p0, p1, k);
+        this.rabbit.position.y = p0.y + (p1.y - p0.y) * k + 1.0 * Math.sin(k * Math.PI);
+        this.rabbit.rotation.y = baseRotY + k * Math.PI * 6;
+        const s = 1 - 0.18 * Math.sin(k * Math.PI);
+        this.rabbit.scale.set(s, s, s);
+        if (g) {
+          // 風はうさぎにまとわりつく(足元より少し下から包む)
+          g.position.set(this.rabbit.position.x, this.rabbit.position.y - 0.3, this.rabbit.position.z);
+          if (spin) spin.rotation.y += 0.3;
+        }
+      }, () => {
+        this.rabbit.position.copy(p1);
+        this.rabbit.rotation.y = Math.PI / 4;
+        this.rabbit.scale.setScalar(1);
+        // うさぎを落とすと、落ち葉が舞い散ってマスが元の畑に戻り、
+        // 風はそのまま画面外へ飛び去る(どちらも待たない)
+        this._blowLeaves(leafIdx);
+        this._whirlExit(whirlIdx);
+        resolve();
+      }, 'rabbit');
     });
-    for (const c of cells) {
-      const plane = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.98, 0.98),
-        new THREE.MeshBasicMaterial({
-          color: 0xff2a2a,
+  }
+
+  // 落ち葉マスに直接乗ったとき: 対のつむじ風が使えなくなり、画面外へ飛び去る
+  whirlFlee(whirlIdx) {
+    this._whirlExit(whirlIdx, 0.15);
+  }
+
+  // つむじ風がうさぎを落とした瞬間: 落ち葉マスの葉が舞い散り、
+  // 積もっていた落ち葉が吹き飛んで下から普通の畑マスが現れる
+  _blowLeaves(idx) {
+    const tm = this.tileMeshes[idx];
+    if (!tm) return;
+    const wp = new THREE.Vector3();
+    tm.group.getWorldPosition(wp);
+
+    // 舞い散る葉(外へ渦を巻きながら飛んで消える)
+    const cols = [0xe8632a, 0xf2b13a, 0xc23a3a, 0xff9a3f, 0xd9814f];
+    for (let i = 0; i < 14; i++) {
+      const m = new THREE.Mesh(
+        new THREE.CircleGeometry(0.05 + Math.random() * 0.05, 5),
+        new THREE.MeshStandardMaterial({
+          color: cols[i % cols.length],
+          flatShading: true,
+          side: THREE.DoubleSide,
           transparent: true,
-          opacity: 0.4,
-          depthWrite: false,
         })
       );
-      plane.rotation.x = -Math.PI / 2;
-      plane.position.copy(this.worldPos(c.x, c.y, this._cellY(c.x, c.y) + 0.05));
-      this.world.add(plane);
-      this.dangerMeshes.push(plane);
-      const idx = tileAtCell.get(c.x + ',' + c.y);
-      if (idx != null) this.dangerTileIds.add(idx);
-    }
-  }
-
-  // 捕獲(非致死): 人間がウサギの手前まで走ってくる。ゲーム側でニンジンを飛散→人間退場。
-  humanApproach(humanData) {
-    return new Promise((resolve) => {
-      const h = this.humans.find((e) => e.data === humanData) || this.humans[0];
-      if (!h) {
-        resolve();
-        return;
-      }
-      const target = this.rabbit.position.clone();
-      const p0 = h.group.position.clone();
-      const p1 = new THREE.Vector3(
-        target.x + (p0.x - target.x) * 0.28,
-        p0.y,
-        target.z + (p0.z - target.z) * 0.28
-      );
-      h.group.rotation.y = Math.atan2(target.x - p0.x, target.z - p0.z);
-      const tag = 'human' + humanData.x + '_' + humanData.y;
-      this.killTweens(tag);
-      this.tween(0.4, 0, (t) => t, (k) => {
-        h.group.position.lerpVectors(p0, p1, k);
-        h.group.position.y = p0.y + Math.abs(Math.sin(k * Math.PI * 4)) * 0.14; // 走る上下動
-      }, () => resolve(), tag);
-    });
-  }
-
-  // ソニックのリングのようにニンジンが飛び散る
-  scatterCarrots(stance, count) {
-    const p = this.worldPos(stance.x, stance.y, this._standY(stance.x, stance.y) + 0.4);
-    const n = Math.max(6, Math.min(count, 16));
-    for (let i = 0; i < n; i++) {
-      const m = new THREE.Mesh(
-        new THREE.ConeGeometry(0.08, 0.26, 6),
-        new THREE.MeshStandardMaterial({ color: 0xff7a1c, flatShading: true })
-      );
-      m.position.copy(p);
+      m.position.set(wp.x, wp.y + 0.22, wp.z);
       this.scene.add(m);
       this._fx.add(m);
-      const ang = (i / n) * Math.PI * 2 + Math.random() * 0.4;
-      const sp = 1.4 + Math.random() * 1.3;
-      const vx = Math.cos(ang) * sp;
-      const vz = Math.sin(ang) * sp;
-      const vy = 2.4 + Math.random() * 1.6;
-      const rx = (Math.random() - 0.5) * 0.9;
-      this.tween(0.7 + Math.random() * 0.25, 0, (t) => t, (k) => {
-        m.position.set(p.x + vx * k, p.y + vy * k - 4.6 * k * k, p.z + vz * k);
-        m.rotation.x += rx;
-        m.rotation.z += 0.2;
-        m.material.opacity = 1 - k;
-        m.material.transparent = true;
+      const ang0 = (i / 14) * Math.PI * 2 + Math.random() * 0.5;
+      const sp = 0.7 + Math.random() * 1.1;
+      const vy = 1.0 + Math.random() * 1.2;
+      const swirl = 2.2 + Math.random() * 1.6; // 渦を巻く回り込み
+      const rx = (Math.random() - 0.5) * 1.4;
+      const rz = (Math.random() - 0.5) * 1.4;
+      this.tween(0.8 + Math.random() * 0.4, i * 0.01, (t) => t, (k) => {
+        const ang = ang0 + swirl * k;
+        const r = sp * k;
+        m.position.set(
+          wp.x + Math.cos(ang) * r,
+          wp.y + 0.22 + vy * k * (1 - 0.55 * k),
+          wp.z + Math.sin(ang) * r
+        );
+        m.rotation.x += rx * 0.25;
+        m.rotation.z += rz * 0.25;
+        m.material.opacity = 1 - k * k;
       }, () => this._removeFx(m));
     }
-  }
 
-  // 人間を1体退場させる(捕獲後)
-  removeHuman(humanData) {
-    const i = this.humans.findIndex((e) => e.data === humanData);
-    if (i < 0) return;
-    const h = this.humans[i];
-    const g = h.group;
-    this.killTweens('human' + humanData.x + '_' + humanData.y);
-    const y0 = g.position.y;
-    this.tween(0.4, 0, easeOut, (k) => {
-      g.position.y = y0 - 1.4 * k;
-      g.scale.setScalar(Math.max(0.01, 1 - k));
-    }, () => {
-      this.world.remove(g);
-    });
-    this.humans.splice(i, 1);
+    // 積もっていた落ち葉の山は吹き飛んで消える(下の畑マスが現れる)
+    const pile = tm.group.userData.leafPile;
+    if (pile && pile.visible) {
+      const s0 = pile.scale.x;
+      this.tween(0.32, 0.05, easeOut, (k) => {
+        pile.scale.setScalar(Math.max(0.01, s0 * (1 - k)));
+        pile.position.y = 0.18 * k;
+      }, () => {
+        pile.visible = false;
+      }, `leafpile${idx}`);
+    }
   }
 
   setNumbersVisible(v) {
     this.numbersVisible = v;
-    for (const t of this.tileMeshes) t.number.visible = v && t.alive;
+    for (const t of this.tileMeshes) if (t.number) t.number.visible = v && t.alive;
   }
 
   setGridVisible(v) {
@@ -908,7 +900,7 @@ export class GameScene {
   // 着地したマスのニンジンをパクッと消す（ウサギが食べた演出とセット）
   eatCarrots(idx) {
     const c = this.tileMeshes[idx].group.userData.carrots;
-    if (!c.visible) return;
+    if (!c || !c.visible) return; // つむじ風マスにはニンジンが無い
     this.eatStart = this.time; // ウサギのモグモグを1回再生
     this.killTweens(`carrot${idx}`);
     this.tween(0.22, 0, easeOut, (k) => {
@@ -1124,10 +1116,13 @@ export class GameScene {
     const active = new Map();
     for (const id of this.reachIds) {
       if (id === 'goal') active.set('goal', { col: 0xffcf22, inten: 0.4 + 0.6 * pulse });
+      else if (this.tileMeshes[id] && this.tileMeshes[id].whirl)
+        // つむじ風は半透明リングで発光が目立たないため強めに。
+        // ただし下限は他のマスと同じくほぼ消えるまで落とす(明滅がはっきり見えるように)
+        active.set(id, { col: 0xffe94a, inten: 0.15 + 1.15 * pulse });
       else active.set(id, { col: 0xfff04a, inten: 0.05 + 0.26 * pulse });
     }
     if (this.hintId != null) active.set(this.hintId, { col: 0xff2f8e, inten: 0.2 + 0.42 * hintPulse });
-    for (const idx of this.dangerTileIds) active.set(idx, { col: 0xff2a2a, inten: 0.5 }); // 危険は最優先・常時
     const matsOf = (id) => (id === 'goal' ? this.goalOrigMats : this.tileMeshes[id] && this.tileMeshes[id].origMats);
     for (const [id, role] of active) {
       const mats = matsOf(id);
@@ -1236,6 +1231,23 @@ export class GameScene {
       if (Math.abs(t.group.scale.x - 1) > 0.05) continue;
       const b = Math.abs(Math.sin(this.time * 4.5 + t.idx * 1.3));
       t.group.scale.y = 0.94 + 0.1 * b;
+    }
+
+    // つむじ風マスは常にグルグル回す(中の木の葉はひらひら舞う)
+    for (const t of this.tileMeshes) {
+      if (!t.whirl || !t.alive || !t.group.visible) continue;
+      const spin = t.group.userData.spin;
+      if (spin) spin.rotation.y += dt * 6;
+      const leaves = t.group.userData.leaves;
+      if (leaves) {
+        for (let i = 0; i < leaves.length; i++) {
+          const lf = leaves[i];
+          lf.rotation.x += dt * (3 + (i % 3));
+          lf.rotation.z += dt * (2 + (i % 2) * 2.5);
+          // ふわふわ上下(葉ごとに位相をずらす)
+          lf.position.y += Math.sin(this.time * 2.6 + i * 1.7) * dt * 0.12;
+        }
+      }
     }
 
     // 極小ウサギがゆっくり行き来する（にぎやかし）

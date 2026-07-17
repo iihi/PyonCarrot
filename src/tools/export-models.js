@@ -9,9 +9,10 @@ import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import {
   makeRabbit,
   makeGoalRabbit,
-  makeHuman,
+  makeWhirl,
   makeGoal,
   makeMound,
+  makeLeafBase,
   makeCarrot,
   makeSpring,
   makeCart,
@@ -24,6 +25,7 @@ function annotate(root, name) {
   root.name = name;
   const u = root.userData || {};
   if (u.inner) u.inner.name = 'rig'; // アニメの基準になる内側グループ
+  if (u.spin) u.spin.name = 'spin'; // つむじ風の回転グループ
   if (u.snack) u.snack.name = 'snack';
   if (u.cart) u.cart.name = 'cart';
   if (u.bunny) u.bunny.name = 'goal_rabbit';
@@ -46,7 +48,8 @@ function annotate(root, name) {
 const DEFS = [
   { key: 'rabbit', label: 'プレイヤー兎', build: () => annotate(makeRabbit(), 'rabbit') },
   { key: 'goal-rabbit', label: 'ゴール兎', build: () => annotate(makeGoalRabbit(), 'goal_rabbit') },
-  { key: 'human', label: '農夫', build: () => annotate(makeHuman(), 'human') },
+  { key: 'whirl', label: 'つむじ風', build: () => annotate(makeWhirl(), 'whirl') },
+  { key: 'leaf-base', label: '落ち葉マスの土台', build: () => annotate(makeLeafBase(), 'leaf_base') },
   { key: 'goal', label: 'ゴールの祠', build: () => annotate(makeGoal(), 'goal') },
   { key: 'mound', label: '畑マスの土台', build: () => annotate(makeMound(), 'mound') },
   { key: 'carrot', label: 'ニンジン', build: () => annotate(makeCarrot(1, false), 'carrot') },

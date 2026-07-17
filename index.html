@@ -38,6 +38,7 @@
       <div class="title-buttons">
         <button id="btn-start" class="big-btn primary">はじめから</button>
         <button id="btn-continue" class="big-btn">つづきから / コード入力</button>
+        <button id="btn-tutorial" class="big-btn sub">チュートリアル</button>
         <button id="btn-help" class="big-btn sub">あそびかた</button>
       </div>
       <div class="title-footer">
@@ -71,10 +72,10 @@
           <li>✨ 光っているマスへタップ（PCは矢印キー）で移動。</li>
           <li>🕳️ 飛び立った畑は消えます。ルートは自由！<b>すきなだけニンジンを集めて</b>、お花の台座で待つ<b>ピンクのウサギ</b>のところへ行けばクリア。うごけなくなったらゲームオーバー。</li>
           <li>🥕 マスに乗るとニンジンを食べて、数字のぶんだけ<b>ニンジンがたまる</b>よ。✨の<b>大ニンジン</b>は1本で<b>5本分</b>！</li>
-          <li>🍂 5ステージごとに<b>季節</b>が変わり、覚えるギミックが増えるよ（春=基本／夏=ジャンプ台／秋=人間／冬=ソリ／それ以降は全部）。</li>
+          <li>🍂 5ステージごとに<b>季節</b>が変わり、覚えるギミックが増えるよ（春=基本／夏=ジャンプ台／秋=つむじ風／冬=ソリ／それ以降は全部）。</li>
           <li>⛰️ <b>段差</b>：高い所へは1段ごとにパワーが<b>1つ多く</b>必要。降りるときは1段ごとに<b>1マス遠くへ</b>。出発と着地より高い地形は飛び越えられない。</li>
           <li>🦘 <b>ジャンプ台</b>のマスからは<b>2マス遠くへ</b>飛べる ／ 🛒 <b>トロッコ・ソリ</b>のマスに乗ると<b>進んだ方向</b>へ走り、かべ(段差や畑)の手前で止まる。止まったマスから<b>数字ぶん</b>ジャンプできる。</li>
-          <li>👨‍🌾 <b>人間</b>：見ている方向（<b>赤いマス</b>）に降りると走ってきて、<b>集めたニンジンを全部おとしちゃう</b>。ジャンプするたびに人間の向きは90°変わるよ。（つかまっても続けられる）</li>
+          <li>🌪️ <b>つむじ風</b>のマスに乗ると、対(つい)になっている<b>落ち葉マス</b>まで運ばれる。落ち葉マスに先に乗ると、つむじ風は飛び去っていなくなるよ。</li>
           <li>🏆 スコアは<b>のこしたニンジン×10点</b>＋ボーナス：<b>全マス回収+300</b>、<b>最短クリア+300</b>。リトライ0回なら<b>×1.5</b>（3回以上は×0.5…）。じっくり集めるか、駆け抜けるか、きみしだい！</li>
           <li>📤 下の「コード」ボタンでステージコードを表示・コピー。コード入力すれば同じステージを共有・再開できます。</li>
         </ul>
@@ -100,6 +101,7 @@
         <div class="clear-btn-row">
           <button id="btn-clear-retry" class="big-btn" title="スコアをやり直して再挑戦（ペナルティなし）">もういちど</button>
           <button id="btn-clear-copy" class="big-btn sub">📋 コード</button>
+          <button id="btn-clear-share" class="big-btn sub" title="結果画像つきでシェア">📤 シェア</button>
         </div>
       </div>
     </div>
@@ -155,6 +157,23 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
         <button id="btn-retry-over" class="big-btn primary">リトライ</button>
         <button id="btn-title-over" class="big-btn sub">タイトルへ</button>
       </div>
+    </div>
+
+    <!-- チュートリアル完了 -->
+    <div id="modal-tut-done" class="modal hidden">
+      <div class="modal-box">
+        <h2 class="clear-title">🎉 チュートリアルおわり！</h2>
+        <p class="modal-text">これで じゅんびは バッチリ！<br />ステージがすすむと、あたらしいギミックが<br />つぎつぎ とうじょうするよ。<br />ニンジンいっぱいの ぼうけんへ しゅっぱつ！</p>
+        <button id="btn-tut-done" class="big-btn primary">さっそくあそぶ！</button>
+      </div>
+    </div>
+
+    <!-- チュートリアル(通しコース)の説明パネル -->
+    <div id="tut-panel" class="hidden">
+      <div id="tut-step-no"></div>
+      <div id="tut-text"></div>
+      <button id="btn-tut-next" class="hidden">つぎへ ▶</button>
+      <button id="btn-tut-skip">スキップ</button>
     </div>
 
     <!-- 段差の初回チュートリアル吹き出し -->

@@ -29,7 +29,8 @@
 | --- | --- | --- | --- |
 | rabbit | `rabbit.glb` | プレイヤー兎 | `rig`(伸縮・ホップ), `ear_0..3`(耳), `snack`(食事用ニンジン/通常非表示), `foot_*`, `arm_*` |
 | goalRabbit | `goal-rabbit.glb` | ゴールで待つピンク兎 | `rig`(呼吸), `ear_0..3` |
-| human | `human.glb` | 農夫 | `rig`(内側グループ)。向き回転・走り寄りは親グループを操作 |
+| whirl | `whirl.glb` | つむじ風(乗ると対の落ち葉マスへ運ぶ) | `spin`(常時回転させる内側グループ) |
+| leafBase | `leaf-base.glb` | 落ち葉マスの土台(つむじ風の飛び先。機能は畑と同じ) | なし ※実際のゲームでは落ち葉柄のテクスチャ(Canvas生成)を貼っている。reference の .glb は単色フォールバック版なので、実物の見た目はゲーム画面を参照 |
 | carrot | `carrot.glb` | ニンジン1本 | なし |
 | spring | `spring.glb` | ジャンプ台のバネ | なし（マス全体を上下スケール） |
 | cart | `cart.glb` | トロッコ | `cart`(本体), `wheel_0..3`(車輪回転) |
