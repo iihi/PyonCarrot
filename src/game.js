@@ -435,7 +435,7 @@ export class Game {
   _continueFromCode() {
     const parsed = parseCode($('code-input').value);
     if (!parsed) {
-      this._toast('コードが正しくありません（例: MWD-H4F）');
+      this._toast('コードが正しくありません（例: MWDH4FX7）');
       return;
     }
     this.sfx.click();

@@ -17,10 +17,10 @@ export const GRID = 9;
 export const MAX_TILES = 30;
 export const MAX_HEIGHT = 3; // 高さレベル0〜3(=段差3段)
 
-// シードの範囲。ステージコード形式(8文字)が表現できる上限まで使う。
-// v = seed*1000 + stage < 2^35(=34,359,738,368) なので seed は最大 約3435万。
+// シードの範囲。ステージコード形式(8文字・28進)が表現できる上限まで使う。
+// v = seed*1000 + stage < 28^7(=13,492,928,512) なので seed は最大 約1349万。
 export const MIN_SEED = 1000;
-export const MAX_SEED = 34000000; // 3400万(コード上限3435万の内側・キリの良い値)
+export const MAX_SEED = 13000000; // 1300万(コード上限1349万の内側・キリの良い値)
 
 export const SPRING_BONUS = 2; // ジャンプ台で伸びる距離
 export const GOLD_MULT = 5; // 大ニンジンは1本で5本分(獲得 = 本数 × 5)
@@ -111,15 +111,17 @@ export function heightCapForStage(stage) {
 }
 
 // ---------- ステージコード ----------
-// (seed, stage) をアフィン変換で撹拌し、Crockford Base32 の7文字 + チェックサム1文字＝
-// 計8文字(ハイフン無し)で表示。「数字をいじって別ステージを名乗る」等のカジュアルな
-// 改竄をはじくための軽い難読化。(紛らわしい I, L, O, U はアルファベットから除外)
-// 表現域: 32^7 = 2^35 ≈ 343億。seed 最大 約3435万 × stage 999 まで格納できる。
-// ※2^35 の乗算は Number の安全整数(2^53)を超えるため、変換は BigInt で行う。
-const CODE_ALPH = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+// (seed, stage) をアフィン変換で撹拌し、7文字 + チェックサム1文字＝計8文字(ハイフン無し)で表示。
+// 「数字をいじって別ステージを名乗る」等のカジュアルな改竄をはじくための軽い難読化。
+// アルファベットは見間違えやすい文字を除外: I/L/O/U(Crockford既定)に加え、数字と紛らわしい
+// B(→8)/G(→6)/S(→5)/Z(→2) も除いた28文字。入力時はこれらを対応する数字へ読み替える。
+// 表現域: 28^7 ≈ 134億。seed 最大 約1349万 × stage 999 まで格納できる。
+// ※大きな数の乗算は Number の安全整数(2^53)を超えるため、変換は BigInt で行う。
+const CODE_ALPH = '0123456789ACDEFHJKMNPQRTVWXY'; // 28文字
+const CODE_BASE = BigInt(CODE_ALPH.length); // 28
 const CODE_DIGITS = 7; // データ7文字(+チェックサム1文字)
-const CODE_M = 32n ** BigInt(CODE_DIGITS); // 2^35
-const CODE_A = 15485863n; // 奇数なので 2^35 と互いに素
+const CODE_M = CODE_BASE ** BigInt(CODE_DIGITS); // 28^7
+const CODE_A = 15485863n; // CODE_M(=2^14·7^7)と互いに素(奇数かつ7で割り切れない)
 const CODE_B = 7654321n;
 const CODE_A_INV = (() => {
   // 拡張ユークリッドで A^-1 mod M (BigInt)
@@ -136,7 +138,7 @@ const CODE_A_INV = (() => {
 function codeChecksum(data) {
   let c = 0;
   for (let i = 0; i < CODE_DIGITS; i++) {
-    c = (c + CODE_ALPH.indexOf(data[i]) * (i + 3)) % 32;
+    c = (c + CODE_ALPH.indexOf(data[i]) * (i + 3)) % CODE_ALPH.length;
   }
   return CODE_ALPH[c];
 }
@@ -145,24 +147,29 @@ export function makeCode(seed, stage) {
   let e = (BigInt(seed * 1000 + stage) * CODE_A + CODE_B) % CODE_M;
   let s = '';
   for (let i = 0; i < CODE_DIGITS; i++) {
-    s = CODE_ALPH[Number(e % 32n)] + s;
-    e = e / 32n;
+    s = CODE_ALPH[Number(e % CODE_BASE)] + s;
+    e = e / CODE_BASE;
   }
   return s + codeChecksum(s); // 8文字・ハイフン無し
 }
 
 export function parseCode(str) {
   if (!str) return null;
+  // 見間違えやすい文字を対応する数字へ読み替えてから判定(打ち間違い救済)
   let s = String(str)
     .toUpperCase()
-    .replace(/[^0-9A-Z]/g, '')
     .replace(/[IL]/g, '1')
-    .replace(/O/g, '0');
+    .replace(/O/g, '0')
+    .replace(/S/g, '5')
+    .replace(/Z/g, '2')
+    .replace(/B/g, '8')
+    .replace(/G/g, '6')
+    .replace(/[^0-9A-Z]/g, '');
   if (s.length !== CODE_DIGITS + 1) return null;
   for (const ch of s) if (CODE_ALPH.indexOf(ch) < 0) return null;
   if (codeChecksum(s) !== s[CODE_DIGITS]) return null;
   let e = 0n;
-  for (let i = 0; i < CODE_DIGITS; i++) e = e * 32n + BigInt(CODE_ALPH.indexOf(s[i]));
+  for (let i = 0; i < CODE_DIGITS; i++) e = e * CODE_BASE + BigInt(CODE_ALPH.indexOf(s[i]));
   const v = Number(((((e - CODE_B) % CODE_M) + CODE_M) % CODE_M) * CODE_A_INV % CODE_M);
   const seed = Math.floor(v / 1000);
   const stage = v % 1000;
