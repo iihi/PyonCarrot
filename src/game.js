@@ -9,6 +9,8 @@ import {
   parseCode,
   GOLD_MULT,
   seasonForStage,
+  MIN_SEED,
+  MAX_SEED,
 } from './level.js';
 import { GameScene } from './scene3d.js';
 import { Sfx } from './sfx.js';
@@ -110,7 +112,7 @@ export class Game {
     $('dbg-skip10').onclick = () => jump(this.stage + 10);
     $('dbg-seed-go').onclick = () => {
       const v = parseInt($('dbg-seed').value, 10);
-      if (v >= 1000 && v <= 9999) {
+      if (v >= MIN_SEED && v <= MAX_SEED) {
         this.seed = v;
         jump(this.stage);
       }
@@ -577,7 +579,8 @@ export class Game {
 
   // ---------- ゲーム進行 ----------
   newGame() {
-    this.seed = 1000 + Math.floor(Math.random() * 9000);
+    // シードはコード形式が表現できる全範囲から選ぶ(はじめからのバリエーション最大化)
+    this.seed = MIN_SEED + Math.floor(Math.random() * (MAX_SEED - MIN_SEED + 1));
     this.stage = 1;
     this.score = 0;
     this.retryCount = 0;

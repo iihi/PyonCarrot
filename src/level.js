@@ -17,6 +17,11 @@ export const GRID = 9;
 export const MAX_TILES = 30;
 export const MAX_HEIGHT = 3; // 高さレベル0〜3(=段差3段)
 
+// シードの範囲。ステージコード形式(6文字)が表現できる上限まで使う。
+// v = seed*1000 + stage < 2^25(=33,554,432) なので seed は最大 33553。
+export const MIN_SEED = 1000;
+export const MAX_SEED = 33553;
+
 export const SPRING_BONUS = 2; // ジャンプ台で伸びる距離
 export const GOLD_MULT = 5; // 大ニンジンは1本で5本分(獲得 = 本数 × 5)
 
@@ -160,7 +165,7 @@ export function parseCode(str) {
   const v = ((((e - CODE_B) % CODE_M) + CODE_M) % CODE_M) * CODE_A_INV % CODE_M;
   const seed = Math.floor(v / 1000);
   const stage = v % 1000;
-  if (seed < 1000 || seed > 9999 || stage < 1 || stage > 999) return null;
+  if (seed < MIN_SEED || seed > MAX_SEED || stage < 1 || stage > 999) return null;
   return { seed, stage };
 }
 

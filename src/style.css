@@ -671,6 +671,15 @@ textarea {
 }
 
 /* クリアDLGの下段ボタン(もういちど/コードコピー) */
+.help-btn-row {
+  display: flex;
+  gap: 8px;
+}
+
+.help-btn-row .big-btn {
+  flex: 1;
+}
+
 .clear-btn-row {
   display: flex;
   gap: 8px;
