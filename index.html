@@ -38,7 +38,6 @@
       <div class="title-buttons">
         <button id="btn-start" class="big-btn primary">はじめから</button>
         <button id="btn-continue" class="big-btn">つづきから / コード入力</button>
-        <button id="btn-tutorial" class="big-btn sub">チュートリアル</button>
         <button id="btn-help" class="big-btn sub">あそびかた</button>
       </div>
       <div class="title-footer">
@@ -55,7 +54,7 @@
         <div id="resume-info" class="hidden"></div>
         <p class="modal-text">ステージコードを入力してもOK</p>
         <div class="code-row">
-          <input id="code-input" type="text" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="8" placeholder="例: MWD-H4F" />
+          <input id="code-input" type="text" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="10" placeholder="例: MWDH4FX7" />
           <button id="btn-code-go" class="big-btn primary slim">GO</button>
         </div>
         <button id="btn-paste" class="big-btn slim self-center">📋 ペースト</button>
@@ -80,7 +79,10 @@
           <li>📤 下の「コード」ボタンでステージコードを表示・コピー。コード入力すれば同じステージを共有・再開できます。</li>
         </ul>
         <p class="modal-text small">PCキー: 矢印=移動 / Enter=OK / R=リトライ / M=サウンド</p>
-        <button id="help-close" class="big-btn primary">とじる</button>
+        <div class="help-btn-row">
+          <button id="btn-tutorial" class="big-btn sub">🎓 チュートリアル</button>
+          <button id="help-close" class="big-btn primary">とじる</button>
+        </div>
       </div>
     </div>
 
@@ -111,7 +113,7 @@
       <div class="modal-box">
         <h2>ステージコード</h2>
         <p class="modal-text small">このコードを入力すると、同じステージを最初から遊べます。おもしろいステージができたら友だちに教えよう！</p>
-        <div class="share-code" id="share-code">0000-1</div>
+        <div class="share-code" id="share-code">--------</div>
         <button id="btn-share-copy" class="big-btn primary">📋 コードをコピー</button>
         <button id="share-close" class="big-btn sub">とじる</button>
       </div>
