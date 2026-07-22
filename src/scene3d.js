@@ -15,6 +15,8 @@ import {
 } from './models.js';
 import { GRID } from './level.js';
 
+// つむじ風マスの「行ける」明滅で使う真っ黄色オーバーレイ色
+const WHIRL_HI = new THREE.Color(0xffe400);
 const easeOut = (t) => 1 - Math.pow(1 - t, 3);
 const easeInOut = (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
 
@@ -226,7 +228,15 @@ export class GameScene {
       group.traverse((o) => {
         if (!o.material) return;
         const ms = Array.isArray(o.material) ? o.material : [o.material];
-        for (const m of ms) if (m.emissive) arr.push({ m, e: m.emissive.getHex(), i: m.emissiveIntensity });
+        for (const m of ms)
+          if (m.emissive)
+            arr.push({
+              m,
+              e: m.emissive.getHex(),
+              i: m.emissiveIntensity,
+              c: m.color ? m.color.getHex() : null,
+              o: m.opacity,
+            });
       });
       return arr;
     };
@@ -1117,9 +1127,9 @@ export class GameScene {
     for (const id of this.reachIds) {
       if (id === 'goal') active.set('goal', { col: 0xffcf22, inten: 0.4 + 0.6 * pulse });
       else if (this.tileMeshes[id] && this.tileMeshes[id].whirl)
-        // つむじ風は半透明リングで発光が目立たないため強めに。
-        // ただし下限は他のマスと同じくほぼ消えるまで落とす(明滅がはっきり見えるように)
-        active.set(id, { col: 0xffe94a, inten: 0.15 + 1.15 * pulse });
+        // つむじ風は半透明リングで発光だけだと目立たないため、
+        // 色そのものを真っ黄色へオーバーレイし(mix)、不透明度も上げて明滅させる。
+        active.set(id, { col: 0xffe400, inten: 0.15 + 1.15 * pulse, whirl: true, mix: pulse });
       else active.set(id, { col: 0xfff04a, inten: 0.05 + 0.26 * pulse });
     }
     if (this.hintId != null) active.set(this.hintId, { col: 0xff2f8e, inten: 0.2 + 0.42 * hintPulse });
@@ -1130,6 +1140,11 @@ export class GameScene {
       for (const mm of mats) {
         mm.m.emissive.setHex(role.col);
         mm.m.emissiveIntensity = role.inten;
+        // つむじ風: 素の色→真っ黄色を明滅でオーバーレイ、不透明度もほぼ不透明まで上げる
+        if (role.whirl && mm.m.color && mm.c != null) {
+          mm.m.color.setHex(mm.c).lerp(WHIRL_HI, role.mix);
+          mm.m.opacity = mm.o + (1 - mm.o) * role.mix * 0.9;
+        }
       }
     }
     for (const id of this._activeHi) {
@@ -1139,6 +1154,8 @@ export class GameScene {
       for (const mm of mats) {
         mm.m.emissive.setHex(mm.e);
         mm.m.emissiveIntensity = mm.i;
+        if (mm.c != null && mm.m.color) mm.m.color.setHex(mm.c);
+        mm.m.opacity = mm.o;
       }
     }
     this._activeHi = new Set(active.keys());

@@ -570,6 +570,8 @@ textarea {
 .season-box .big-btn.primary {
   margin-top: 6px;
   background: var(--season-color, #7c5cff);
+  /* 影も季節色から暗くして合わせる(.big-btn.primary のオレンジ影を上書き) */
+  box-shadow: 0 5px 0 color-mix(in srgb, var(--season-color, #7c5cff) 68%, #000);
 }
 
 .help-list {
