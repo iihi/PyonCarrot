@@ -113,14 +113,10 @@ textarea {
   font-family: inherit;
   color: #fff;
   background: linear-gradient(#6cc95f, var(--green));
-  border-bottom: 4px solid var(--green-dark);
+  /* 立体感は box-shadow で(border だと押下時に高さが変わり周囲がずれる) */
+  box-shadow: 0 4px 0 var(--green-dark);
   cursor: pointer;
   user-select: none;
-}
-
-.hud-btn:active {
-  transform: translateY(2px);
-  border-bottom-width: 2px;
 }
 
 .hud-btn.disabled {
@@ -129,7 +125,7 @@ textarea {
 
 .item-btn {
   background: linear-gradient(#ffab55, var(--orange));
-  border-bottom-color: var(--orange-dark);
+  box-shadow: 0 4px 0 var(--orange-dark);
 }
 
 .item-btn .icon {
@@ -156,13 +152,13 @@ textarea {
   width: 38px;
   font-size: 13px;
   background: linear-gradient(#9db4c0, #7e97a5);
-  border-bottom-color: #5f7482;
+  box-shadow: 0 4px 0 #5f7482;
   opacity: 0.92;
 }
 
 .hud-btn.mini.on {
   background: linear-gradient(#6cc95f, var(--green));
-  border-bottom-color: var(--green-dark);
+  box-shadow: 0 4px 0 var(--green-dark);
 }
 
 /* サウンドOFF: 音符(♪)に斜めの取り消し線を重ねる */
@@ -187,8 +183,15 @@ textarea {
   width: auto;
   padding: 8px 12px;
   background: linear-gradient(#ffab55, var(--orange));
-  border-bottom-color: var(--orange-dark);
+  box-shadow: 0 4px 0 var(--orange-dark);
   opacity: 1;
+}
+
+/* 押下: 影のぶんだけ沈める(variant の box-shadow より後・同等以上の詳細度で確実に上書き) */
+.hud-btn:active,
+.hud-btn.mini:active {
+  transform: translateY(4px);
+  box-shadow: none;
 }
 
 /* ---------- スコア内訳（クリアDLG） ---------- */
@@ -455,29 +458,32 @@ textarea {
   font-family: inherit;
   color: #fff;
   background: linear-gradient(#6cc95f, var(--green));
-  border-bottom: 5px solid var(--green-dark);
+  /* 立体感は box-shadow で描く(border だと押下時に高さが変わり周囲がずれるため) */
+  box-shadow: 0 5px 0 var(--green-dark);
   cursor: pointer;
   width: 100%;
 }
 
-.big-btn:active {
-  transform: translateY(3px);
-  border-bottom-width: 2px;
-}
-
 .big-btn.primary {
   background: linear-gradient(#ffab55, var(--orange));
-  border-bottom-color: var(--orange-dark);
+  box-shadow: 0 5px 0 var(--orange-dark);
 }
 
 .big-btn.sub {
   background: linear-gradient(#9db4c0, #7e97a5);
-  border-bottom-color: #5f7482;
+  box-shadow: 0 5px 0 #5f7482;
 }
 
 .big-btn.slim {
   width: auto;
   padding: 12px 20px;
+}
+
+/* 押下: 影のぶんだけ沈める。box-shadow/transform はレイアウトに影響しないので
+   周囲は動かない。variant(primary/sub)の box-shadow より後に置いて確実に上書きする */
+.big-btn:active {
+  transform: translateY(5px);
+  box-shadow: none;
 }
 
 /* ---------- モーダル ---------- */
@@ -678,6 +684,11 @@ textarea {
 
 .help-btn-row .big-btn {
   flex: 1;
+  min-width: 0;
+  white-space: nowrap; /* 「チュートリアル」を必ず一行に */
+  font-size: 14px; /* 横並びでも収まるよう少し小さく */
+  padding-left: 6px;
+  padding-right: 6px;
 }
 
 .clear-btn-row {
