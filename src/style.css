@@ -486,6 +486,19 @@ textarea {
   box-shadow: none;
 }
 
+/* 無効(例: つづきデータが無い「つづきから」)はグレーで押せない見た目に */
+.big-btn:disabled {
+  background: linear-gradient(#d6d6d6, #bdbdbd);
+  box-shadow: 0 5px 0 #9a9a9a;
+  color: #f2f2f2;
+  cursor: default;
+  opacity: 0.85;
+}
+.big-btn:disabled:active {
+  transform: none;
+  box-shadow: 0 5px 0 #9a9a9a;
+}
+
 /* ---------- モーダル ---------- */
 .modal {
   position: absolute;
