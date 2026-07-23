@@ -161,10 +161,9 @@ export class Game {
         else this.newGame();
       };
       // つづきデータがある場合は、うっかり消さないよう確認を挟む
+      // (確認文は index.html の静的テキスト「…が消えます。/ よろしいですか？」を使用)
       const save = this._loadSave();
       if (save) {
-        $('newgame-info').innerHTML =
-          `「つづきから」のデータ（ステージ ${save.stage}）が消えます。<br>よろしいですか？`;
         this._pendingNewGame = startFresh;
         this._show('modal-newgame');
       } else {

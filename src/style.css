@@ -550,6 +550,16 @@ textarea {
   opacity: 0.8;
 }
 
+.modal-text.tiny {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+/* コード入力の注意書き: 上の説明文とほどよく間隔をあける */
+.code-note {
+  margin-top: 2px;
+}
+
 /* 季節の導入説明 */
 .season-box {
   background: var(--cream);
