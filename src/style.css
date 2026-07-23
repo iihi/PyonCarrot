@@ -486,6 +486,19 @@ textarea {
   box-shadow: none;
 }
 
+/* 無効(例: つづきデータが無い「つづきから」)はグレーで押せない見た目に */
+.big-btn:disabled {
+  background: linear-gradient(#d6d6d6, #bdbdbd);
+  box-shadow: 0 5px 0 #9a9a9a;
+  color: #f2f2f2;
+  cursor: default;
+  opacity: 0.85;
+}
+.big-btn:disabled:active {
+  transform: none;
+  box-shadow: 0 5px 0 #9a9a9a;
+}
+
 /* ---------- モーダル ---------- */
 .modal {
   position: absolute;
@@ -535,6 +548,16 @@ textarea {
 .modal-text.small {
   font-size: 12px;
   opacity: 0.8;
+}
+
+.modal-text.tiny {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+/* コード入力の注意書き: 上の説明文とほどよく間隔をあける */
+.code-note {
+  margin-top: 2px;
 }
 
 /* 季節の導入説明 */
