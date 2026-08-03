@@ -457,9 +457,7 @@ textarea {
   font-weight: 800;
   font-family: inherit;
   color: #fff;
-  /* 差し替え画像(assets/ui)があればそれを、無ければ従来のグラデ。--skin-* は uiSkin.js が設定 */
-  background: var(--skin-btn, none) center / 100% 100% no-repeat,
-    linear-gradient(#6cc95f, var(--green));
+  background: linear-gradient(#6cc95f, var(--green));
   /* 立体感は box-shadow で描く(border だと押下時に高さが変わり周囲がずれるため) */
   box-shadow: 0 5px 0 var(--green-dark);
   cursor: pointer;
@@ -467,14 +465,12 @@ textarea {
 }
 
 .big-btn.primary {
-  background: var(--skin-btn-primary, none) center / 100% 100% no-repeat,
-    linear-gradient(#ffab55, var(--orange));
+  background: linear-gradient(#ffab55, var(--orange));
   box-shadow: 0 5px 0 var(--orange-dark);
 }
 
 .big-btn.sub {
-  background: var(--skin-btn-sub, none) center / 100% 100% no-repeat,
-    linear-gradient(#9db4c0, #7e97a5);
+  background: linear-gradient(#9db4c0, #7e97a5);
   box-shadow: 0 5px 0 #5f7482;
 }
 
@@ -490,22 +486,40 @@ textarea {
   box-shadow: none;
 }
 
-/* UIスキン適用時: その部位のCSS立体影を消して、差し替え画像だけで見せる。
-   (画像に立体感や影を含める前提。押下は画像ごと少し沈める) */
-.skin-btn .big-btn:not(.primary):not(.sub),
-.skin-btn-primary .big-btn.primary,
-.skin-btn-sub .big-btn.sub {
+/* UIスキン適用時: 背景を「差し替え画像のみ」にし、CSSのグラデ地・立体影・縁取りを消す。
+   画像の透明部分からは背後(ページ)が見える(緑のグラデは残らない)。
+   立体感・縁・影は画像側に含める前提。押下は画像ごと少し沈める。 */
+.skin-btn .big-btn:not(.primary):not(.sub) {
+  background: var(--skin-btn) center / 100% 100% no-repeat;
   box-shadow: none;
 }
-.skin-btn .big-btn:not(.primary):not(.sub):active,
-.skin-btn-primary .big-btn.primary:active,
-.skin-btn-sub .big-btn.sub:active {
+.skin-btn-primary .big-btn.primary {
+  background: var(--skin-btn-primary) center / 100% 100% no-repeat;
+  box-shadow: none;
+}
+.skin-btn-sub .big-btn.sub {
+  background: var(--skin-btn-sub) center / 100% 100% no-repeat;
+  box-shadow: none;
+}
+/* 押下時: プレス用画像(--skin-*-active)があれば差し替え、無ければ通常画像のまま軽く沈める */
+.skin-btn .big-btn:not(.primary):not(.sub):active {
+  background-image: var(--skin-btn-active, var(--skin-btn));
   transform: translateY(2px);
   box-shadow: none;
-  filter: brightness(0.93);
 }
-/* ダイアログ枠を差し替えたら緑の枠線は消す(画像が枠を含む前提) */
+.skin-btn-primary .big-btn.primary:active {
+  background-image: var(--skin-btn-primary-active, var(--skin-btn-primary));
+  transform: translateY(2px);
+  box-shadow: none;
+}
+.skin-btn-sub .big-btn.sub:active {
+  background-image: var(--skin-btn-sub-active, var(--skin-btn-sub));
+  transform: translateY(2px);
+  box-shadow: none;
+}
+/* ダイアログ枠を差し替えたら緑の枠線・クリーム地は消す(画像が枠を含む前提) */
 .skin-panel .modal-box {
+  background: var(--skin-panel) center / 100% 100% no-repeat;
   border-color: transparent;
 }
 

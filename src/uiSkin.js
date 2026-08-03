@@ -8,12 +8,14 @@
 //   { "btnPrimary": "btn-primary.png", "panel": "panel.png" }
 // 既定は空 {} なので 404 も出ない。運用は assets/ui/README.md を参照。
 
-// スキンのキー → { var: CSS変数名, cls: <html>に付けるクラス }
-// クラス側で、その部位の「CSSが描く縁取り・立体影」を消して画像だけで見せる。
+// スキンのキー → { var: 通常画像のCSS変数, cls: <html>に付けるクラス,
+//                 pressed: 押下画像のmanifestキー, activeVar: 押下画像のCSS変数 }
+// クラス側で、その部位の「CSSが描く縁取り・立体影・地色」を消して画像だけで見せる。
+// pressed 画像は任意。あれば押下時に切り替え、無ければ通常画像のまま軽く沈める。
 const SKIN_VARS = {
-  btn: { var: '--skin-btn', cls: 'skin-btn' }, // 通常ボタン(緑)
-  btnPrimary: { var: '--skin-btn-primary', cls: 'skin-btn-primary' }, // 主ボタン(オレンジ)
-  btnSub: { var: '--skin-btn-sub', cls: 'skin-btn-sub' }, // 副ボタン(グレー)
+  btn: { var: '--skin-btn', cls: 'skin-btn', pressed: 'btnPressed', activeVar: '--skin-btn-active' }, // 通常ボタン(緑)
+  btnPrimary: { var: '--skin-btn-primary', cls: 'skin-btn-primary', pressed: 'btnPrimaryPressed', activeVar: '--skin-btn-primary-active' }, // 主ボタン(オレンジ)
+  btnSub: { var: '--skin-btn-sub', cls: 'skin-btn-sub', pressed: 'btnSubPressed', activeVar: '--skin-btn-sub-active' }, // 副ボタン(グレー)
   panel: { var: '--skin-panel', cls: 'skin-panel' }, // ダイアログ枠(.modal-box)
 };
 
@@ -30,15 +32,17 @@ export async function applyUiSkin(dir = 'assets/ui/') {
   if (!manifest || typeof manifest !== 'object') return;
 
   const root = document.documentElement;
-  for (const [key, { var: varName, cls }] of Object.entries(SKIN_VARS)) {
+  // 相対 file 名 → ドキュメント基準の絶対 url() 文字列。
+  // (CSS変数内の相対url()はスタイルシート基準(src/)で誤解決されるため絶対URLにする)
+  const toUrl = (file) => `url("${new URL(base + dir + file, document.baseURI).href}")`;
+
+  for (const [key, { var: varName, cls, pressed, activeVar }] of Object.entries(SKIN_VARS)) {
     const file = manifest[key];
-    if (typeof file === 'string' && file) {
-      // CSS変数内の相対url()はスタイルシート基準(src/)で解決されてしまうため、
-      // ドキュメント基準の絶対URLにしてから渡す。
-      const abs = new URL(base + dir + file, document.baseURI).href;
-      root.style.setProperty(varName, `url("${abs}")`);
-      // その部位のCSS縁取り・立体影を消すためのクラスを付与
-      root.classList.add(cls);
-    }
+    if (typeof file !== 'string' || !file) continue;
+    root.style.setProperty(varName, toUrl(file));
+    root.classList.add(cls); // その部位のCSS縁取り・立体影・地色を消す
+    // 押下用画像(任意)。あれば :active で切り替わる
+    const pf = pressed && manifest[pressed];
+    if (typeof pf === 'string' && pf) root.style.setProperty(activeVar, toUrl(pf));
   }
 }
