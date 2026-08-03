@@ -61,7 +61,7 @@ function build() {
   note.innerHTML =
     '各ボタンで現行の生成画像を .png でダウンロードします。<br>' +
     'ダウンロードした一式を <code>assets/reference/</code> に置いてデザイナーへのリファレンスにしてください。<br>' +
-    'デザイナーが直した .png を <code>assets/textures/</code> に <code>&lt;key&gt;.png</code> の名前で置くと、ゲームが自動で差し替えます。<br>' +
+    'デザイナーが直した .png を <code>public/assets/textures/</code> に <code>&lt;key&gt;.png</code> の名前で置くと、ゲームが自動で差し替えます。<br>' +
     '仕様は <code>assets/README.md</code> の「画像(テクスチャ)一覧」を参照。';
   app.appendChild(note);
 

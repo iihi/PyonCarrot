@@ -457,7 +457,9 @@ textarea {
   font-weight: 800;
   font-family: inherit;
   color: #fff;
-  background: linear-gradient(#6cc95f, var(--green));
+  /* 差し替え画像(assets/ui)があればそれを、無ければ従来のグラデ。--skin-* は uiSkin.js が設定 */
+  background: var(--skin-btn, none) center / 100% 100% no-repeat,
+    linear-gradient(#6cc95f, var(--green));
   /* 立体感は box-shadow で描く(border だと押下時に高さが変わり周囲がずれるため) */
   box-shadow: 0 5px 0 var(--green-dark);
   cursor: pointer;
@@ -465,12 +467,14 @@ textarea {
 }
 
 .big-btn.primary {
-  background: linear-gradient(#ffab55, var(--orange));
+  background: var(--skin-btn-primary, none) center / 100% 100% no-repeat,
+    linear-gradient(#ffab55, var(--orange));
   box-shadow: 0 5px 0 var(--orange-dark);
 }
 
 .big-btn.sub {
-  background: linear-gradient(#9db4c0, #7e97a5);
+  background: var(--skin-btn-sub, none) center / 100% 100% no-repeat,
+    linear-gradient(#9db4c0, #7e97a5);
   box-shadow: 0 5px 0 #5f7482;
 }
 
@@ -512,7 +516,8 @@ textarea {
 }
 
 .modal-box {
-  background: var(--cream);
+  /* パネル枠の差し替え画像(assets/ui/panel.png)があれば重ねる。無ければ従来のクリーム地 */
+  background: var(--skin-panel, none) center / 100% 100% no-repeat, var(--cream);
   border: 4px solid var(--green-dark);
   border-radius: 22px;
   padding: 24px 20px;
