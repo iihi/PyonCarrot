@@ -1,6 +1,7 @@
 // ローポリ3Dモデルをコードで生成（外部アセット不要）
 import * as THREE from 'three';
 import { GRID } from './level.js';
+import { loadedTexture } from './textureLoader.js';
 
 // 段差1レベルぶんの高さ(ワールド単位)。低めにして奥のマスが隠れにくいようにする
 export const HSTEP = 0.35;
@@ -352,15 +353,9 @@ export function makeMound() {
   return g;
 }
 
-// 落ち葉のテクスチャ(Canvasで生成・全落ち葉マスで共有)。
+// 落ち葉テクスチャの絵柄を Canvas に描いて返す(書き出しツールと共用の単一ソース)。
 // 腐葉土の下地に、色とりどりの葉っぱ(尖った楕円+葉脈)を敷き詰めて描く。
-let _leafTex = null;
-function leafTexture() {
-  if (_leafTex !== null) return _leafTex;
-  if (typeof document === 'undefined') {
-    _leafTex = false; // node(書き出しツール)ではテクスチャ無し=単色フォールバック
-    return _leafTex;
-  }
+export function drawLeafCanvas() {
   const c = document.createElement('canvas');
   c.width = c.height = 256;
   const ctx = c.getContext('2d');
@@ -399,7 +394,21 @@ function leafTexture() {
     ctx.stroke();
     ctx.restore();
   }
-  const tex = new THREE.CanvasTexture(c);
+  return c;
+}
+
+// 落ち葉テクスチャ(全落ち葉マスで共有)。
+// assets/textures/leaf.png があればそれを、無ければ Canvas 生成にフォールバック。
+let _leafTex = null;
+function leafTexture() {
+  const ext = loadedTexture('leaf');
+  if (ext) return ext;
+  if (_leafTex !== null) return _leafTex;
+  if (typeof document === 'undefined') {
+    _leafTex = false; // node(書き出しツール)ではテクスチャ無し=単色フォールバック
+    return _leafTex;
+  }
+  const tex = new THREE.CanvasTexture(drawLeafCanvas());
   tex.colorSpace = THREE.SRGBColorSpace;
   _leafTex = tex;
   return _leafTex;
@@ -818,7 +827,8 @@ function mulberryLocal(a) {
 // ---------- 数字バッジ（原作準拠の色分け: 1=青 2=ピンク 3=赤） ----------
 const NUMBER_COLORS = { 1: '#3b6fe0', 2: '#e858b8', 3: '#e8483b' };
 
-export function makeNumberSprite(value) {
+// 数字バッジの絵柄を Canvas に描いて返す(書き出しツールと共用の単一ソース)。
+export function drawNumberCanvas(value) {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = 128;
   const ctx = canvas.getContext('2d');
@@ -831,7 +841,13 @@ export function makeNumberSprite(value) {
   ctx.strokeText(String(value), 64, 70);
   ctx.fillStyle = NUMBER_COLORS[value] || '#3b6fe0';
   ctx.fillText(String(value), 64, 70);
-  const tex = new THREE.CanvasTexture(canvas);
+  return canvas;
+}
+
+export function makeNumberSprite(value) {
+  // assets/textures/number-<value>.png があればそれを、無ければ Canvas 生成
+  let tex = loadedTexture('number' + value);
+  if (!tex) tex = new THREE.CanvasTexture(drawNumberCanvas(value));
   const sprite = new THREE.Sprite(
     new THREE.SpriteMaterial({ map: tex, depthTest: false })
   );
