@@ -490,6 +490,25 @@ textarea {
   box-shadow: none;
 }
 
+/* UIスキン適用時: その部位のCSS立体影を消して、差し替え画像だけで見せる。
+   (画像に立体感や影を含める前提。押下は画像ごと少し沈める) */
+.skin-btn .big-btn:not(.primary):not(.sub),
+.skin-btn-primary .big-btn.primary,
+.skin-btn-sub .big-btn.sub {
+  box-shadow: none;
+}
+.skin-btn .big-btn:not(.primary):not(.sub):active,
+.skin-btn-primary .big-btn.primary:active,
+.skin-btn-sub .big-btn.sub:active {
+  transform: translateY(2px);
+  box-shadow: none;
+  filter: brightness(0.93);
+}
+/* ダイアログ枠を差し替えたら緑の枠線は消す(画像が枠を含む前提) */
+.skin-panel .modal-box {
+  border-color: transparent;
+}
+
 /* 無効(例: つづきデータが無い「つづきから」)はグレーで押せない見た目に */
 .big-btn:disabled {
   background: linear-gradient(#d6d6d6, #bdbdbd);

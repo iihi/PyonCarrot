@@ -8,12 +8,13 @@
 //   { "btnPrimary": "btn-primary.png", "panel": "panel.png" }
 // 既定は空 {} なので 404 も出ない。運用は assets/ui/README.md を参照。
 
-// スキンのキー → style.css で使う CSS 変数名
+// スキンのキー → { var: CSS変数名, cls: <html>に付けるクラス }
+// クラス側で、その部位の「CSSが描く縁取り・立体影」を消して画像だけで見せる。
 const SKIN_VARS = {
-  btn: '--skin-btn', // 通常ボタン(緑)
-  btnPrimary: '--skin-btn-primary', // 主ボタン(オレンジ)
-  btnSub: '--skin-btn-sub', // 副ボタン(グレー)
-  panel: '--skin-panel', // ダイアログ枠(.modal-box)
+  btn: { var: '--skin-btn', cls: 'skin-btn' }, // 通常ボタン(緑)
+  btnPrimary: { var: '--skin-btn-primary', cls: 'skin-btn-primary' }, // 主ボタン(オレンジ)
+  btnSub: { var: '--skin-btn-sub', cls: 'skin-btn-sub' }, // 副ボタン(グレー)
+  panel: { var: '--skin-panel', cls: 'skin-panel' }, // ダイアログ枠(.modal-box)
 };
 
 export async function applyUiSkin(dir = 'assets/ui/') {
@@ -29,13 +30,15 @@ export async function applyUiSkin(dir = 'assets/ui/') {
   if (!manifest || typeof manifest !== 'object') return;
 
   const root = document.documentElement;
-  for (const [key, varName] of Object.entries(SKIN_VARS)) {
+  for (const [key, { var: varName, cls }] of Object.entries(SKIN_VARS)) {
     const file = manifest[key];
     if (typeof file === 'string' && file) {
       // CSS変数内の相対url()はスタイルシート基準(src/)で解決されてしまうため、
       // ドキュメント基準の絶対URLにしてから渡す。
       const abs = new URL(base + dir + file, document.baseURI).href;
       root.style.setProperty(varName, `url("${abs}")`);
+      // その部位のCSS縁取り・立体影を消すためのクラスを付与
+      root.classList.add(cls);
     }
   }
 }
