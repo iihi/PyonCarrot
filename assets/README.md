@@ -39,6 +39,12 @@
 | sled | `sled.glb` | ソリ（冬） | `cart`(本体)。車輪なし |
 | goal | `goal.glb` | ゴールの祠（台座＋旗＋兎） | `flag`(旗), `goal_rabbit`(中の兎) |
 | mound | `mound.glb` | 畑マスの土台 | なし |
+| islandBase | `island-base.glb` | 島の土台（水面＋草地の円盤） | なし |
+| tree | `tree.glb` | 背景の木（春の色で書き出し。`tree-winter.glb` は冬＝雪付きの参考） | なし |
+| rock | `rock.glb` | 背景の岩 | なし |
+| flower | `flower.glb` | 背景の花 | なし |
+
+> 背景（islandBase / tree / rock / flower）は、**配置（島のまわりに散らす）と季節ごとの色付けはコード側**で行っています。差し替えるのは1個ぶんの「見た目」で、それをコードが並べます。木は春の色で書き出していますが、実際は季節ごとに色が変わります（冬は雪付き＝`tree-winter.glb` を参照）。
 
 ## 制作ルール（重要）
 
