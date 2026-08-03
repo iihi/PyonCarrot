@@ -30,7 +30,7 @@ const SEASON_INTRO = {
   summer: { emoji: '☀️', name: '夏', color: '#2fb2e0', text: '<b>ジャンプ台</b>とうじょう！<br>のって飛ぶと<b>2マス遠く</b>までとべるよ。' },
   autumn: { emoji: '🍂', name: '秋', color: '#e0842f', text: '<b>つむじ風</b>があらわれた！<br>のると対(つい)の<b>落ち葉マス</b>まで<br>ビュ〜ンと運ばれるよ。' },
   winter: { emoji: '❄️', name: '冬', color: '#4aa3d6', text: '<b>ソリ</b>にのって、進んだ方向へすべって、<br>かべ(段差や畑)の手前で止まる。<br>止まった所から<b>数字ぶん</b>ジャンプ！' },
-  allin: { emoji: '🎊', name: 'ぜんぶ！', color: '#7c5cff', text: 'ここからは<b>ぜんぶ</b>でてくる！' },
+  allin: { emoji: '🎊', name: 'オールシーズン', color: '#7c5cff', text: 'ここからは<b>ぜんぶ</b>でてくる！' },
 };
 
 const $ = (id) => document.getElementById(id);
