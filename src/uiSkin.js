@@ -19,6 +19,21 @@ const SKIN_VARS = {
   panel: { var: '--skin-panel', cls: 'skin-panel' }, // ダイアログ枠(.modal-box)
 };
 
+// HUDのアイコン(サウンドはオン/オフ2状態)。画像があれば絵文字を隠して差し替え。
+const ICON_VARS = {
+  iconSoundOn: '--skin-icon-sound-on', // サウンドON時
+  iconSoundOff: '--skin-icon-sound-off', // サウンドOFF時
+  iconHome: '--skin-icon-home', // タイトルへ
+};
+
+// manifest の各キー → 解決済み絶対URL(JSから使う: 季節アイコン等)
+const resolved = {};
+
+// キーに対応する差し替え画像の絶対URL。無ければ null。
+export function uiSkinUrl(key) {
+  return resolved[key] || null;
+}
+
 export async function applyUiSkin(dir = 'assets/ui/') {
   const base = (import.meta.env && import.meta.env.BASE_URL) || './';
   let manifest;
@@ -32,10 +47,17 @@ export async function applyUiSkin(dir = 'assets/ui/') {
   if (!manifest || typeof manifest !== 'object') return;
 
   const root = document.documentElement;
+  const rawUrl = (file) => new URL(base + dir + file, document.baseURI).href;
   // 相対 file 名 → ドキュメント基準の絶対 url() 文字列。
   // (CSS変数内の相対url()はスタイルシート基準(src/)で誤解決されるため絶対URLにする)
-  const toUrl = (file) => `url("${new URL(base + dir + file, document.baseURI).href}")`;
+  const toUrl = (file) => `url("${rawUrl(file)}")`;
 
+  // すべての文字列エントリの絶対URLを記録(JSからの参照用)
+  for (const [k, v] of Object.entries(manifest)) {
+    if (typeof v === 'string' && v) resolved[k] = rawUrl(v);
+  }
+
+  // ボタン・ダイアログ枠
   for (const [key, { var: varName, cls, pressed, activeVar }] of Object.entries(SKIN_VARS)) {
     const file = manifest[key];
     if (typeof file !== 'string' || !file) continue;
@@ -45,4 +67,12 @@ export async function applyUiSkin(dir = 'assets/ui/') {
     const pf = pressed && manifest[pressed];
     if (typeof pf === 'string' && pf) root.style.setProperty(activeVar, toUrl(pf));
   }
+
+  // HUDアイコン(サウンド/ホーム)
+  for (const [key, varName] of Object.entries(ICON_VARS)) {
+    const file = manifest[key];
+    if (typeof file === 'string' && file) root.style.setProperty(varName, toUrl(file));
+  }
+  if (manifest.iconSoundOn || manifest.iconSoundOff) root.classList.add('skin-icon-sound');
+  if (manifest.iconHome) root.classList.add('skin-icon-home');
 }

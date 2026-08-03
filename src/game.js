@@ -15,6 +15,7 @@ import {
 import { GameScene } from './scene3d.js';
 import { Sfx } from './sfx.js';
 import { TUTORIAL_STEPS } from './tutorial.js';
+import { uiSkinUrl } from './uiSkin.js';
 
 const SAVE_KEY = 'pyoncarrot_save_v1';
 
@@ -683,7 +684,19 @@ export class Game {
 
   _showSeasonIntro(key) {
     const info = SEASON_INTRO[key];
-    $('season-emoji').textContent = info.emoji;
+    // 上部アイコン: 差し替え画像(assets/ui/season*.png)があれば画像、無ければ絵文字
+    const iconEl = $('season-emoji');
+    const skinKey = 'season' + key.charAt(0).toUpperCase() + key.slice(1);
+    const url = uiSkinUrl(skinKey);
+    if (url) {
+      iconEl.textContent = '';
+      iconEl.style.backgroundImage = `url("${url}")`;
+      iconEl.classList.add('has-img');
+    } else {
+      iconEl.style.backgroundImage = '';
+      iconEl.classList.remove('has-img');
+      iconEl.textContent = info.emoji;
+    }
     $('season-name').textContent = info.name;
     $('season-text').innerHTML = info.text;
     const box = $('modal-season').querySelector('.season-box');

@@ -41,6 +41,28 @@
 
 例：`{ "btnPrimary": "start.png", "btnPrimaryPressed": "start_press.png" }`
 
+### 季節ダイアログの上部アイコン（任意）
+
+季節の説明ダイアログ上部の絵文字（🌸☀️🍂❄️🎊）を、季節ごとに画像へ差し替えられます。無指定は絵文字のまま。
+
+| キー | 対象 |
+| --- | --- |
+| `seasonSpring` | 春 |
+| `seasonSummer` | 夏 |
+| `seasonAutumn` | 秋 |
+| `seasonWinter` | 冬 |
+| `seasonAllin` | オールシーズン |
+
+### HUD（ゲーム画面下）のアイコン（任意）
+
+| キー | 対象 |
+| --- | --- |
+| `iconSoundOn` | サウンドON時 |
+| `iconSoundOff` | サウンドOFF時 |
+| `iconHome` | タイトルへ（ホーム） |
+
+例：`{ "iconSoundOn": "sound_on.png", "iconSoundOff": "sound_off.png", "iconHome": "home.png" }`
+
 ## 制作ルール
 
 - **伸縮**：画像は要素サイズに合わせて 100%×100% で引き伸ばして表示します（ボタンは幅が可変）。

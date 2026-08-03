@@ -12,6 +12,15 @@
   --orange-dark: #e06f12;
   --brown: #5a3b1e;
   --cream: #fff8ec;
+
+  /* ボタン配色(仮): タイトルで緑が草地と同化 / グレーが押下不可に見える問題の暫定対応。
+     通常ボタン=青系、副ボタン=紫系にして、背景の緑・無効グレーと差別化する。 */
+  --btn-top: #57b0ee;
+  --btn: #2f96db;
+  --btn-dark: #1f74b0;
+  --btn-sub-top: #b492e0;
+  --btn-sub: #9068cf;
+  --btn-sub-dark: #6f49ac;
 }
 
 html,
@@ -177,6 +186,32 @@ textarea {
   background: #e0483b;
   transform: translate(-50%, -50%) rotate(-45deg);
   pointer-events: none;
+}
+
+/* HUDのサウンド/ホームを画像に差し替え(manifest指定時)。絵文字・地色・斜線は隠す。
+   サウンドはオン/オフで別画像。無指定なら従来の絵文字チップのまま。 */
+html.skin-icon-sound #btn-sound,
+html.skin-icon-home #btn-home {
+  color: transparent;
+  background-color: transparent;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 76%;
+  box-shadow: none;
+  opacity: 1;
+}
+html.skin-icon-sound #btn-sound {
+  background-image: var(--skin-icon-sound-off);
+}
+html.skin-icon-sound #btn-sound.on {
+  background-image: var(--skin-icon-sound-on);
+}
+html.skin-icon-home #btn-home {
+  background-image: var(--skin-icon-home);
+}
+/* 差し替え時は既定の取り消し線を消す(OFF画像側で表現) */
+html.skin-icon-sound #btn-sound:not(.on)::after {
+  display: none;
 }
 
 .hud-btn.mini.wide {
@@ -457,9 +492,9 @@ textarea {
   font-weight: 800;
   font-family: inherit;
   color: #fff;
-  background: linear-gradient(#6cc95f, var(--green));
+  background: linear-gradient(var(--btn-top), var(--btn));
   /* 立体感は box-shadow で描く(border だと押下時に高さが変わり周囲がずれるため) */
-  box-shadow: 0 5px 0 var(--green-dark);
+  box-shadow: 0 5px 0 var(--btn-dark);
   cursor: pointer;
   width: 100%;
 }
@@ -470,8 +505,8 @@ textarea {
 }
 
 .big-btn.sub {
-  background: linear-gradient(#9db4c0, #7e97a5);
-  box-shadow: 0 5px 0 #5f7482;
+  background: linear-gradient(var(--btn-sub-top), var(--btn-sub));
+  box-shadow: 0 5px 0 var(--btn-sub-dark);
 }
 
 .big-btn.slim {
@@ -568,13 +603,22 @@ textarea {
   overflow-x: hidden;
 }
 
+/* 見出しは上部の色帯(ヘッダー)で本文と仕切る(仮・色味おまかせ)。
+   box の padding を相殺して左右・上いっぱいに広げ、角丸の上側に合わせる。 */
 .modal-box h2 {
-  color: var(--green-dark);
-  font-size: 24px;
+  color: #fff;
+  font-size: 22px;
+  margin: -24px -20px 2px;
+  padding: 13px 20px;
+  background: var(--dialog-head, var(--green));
+  border-radius: 18px 18px 0 0;
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.12);
 }
 
+/* クリアだけは祝祭感でオレンジ帯 */
 .clear-title {
-  color: var(--orange-dark) !important;
+  color: #fff !important;
+  --dialog-head: var(--orange);
 }
 
 .modal-text {
@@ -616,6 +660,15 @@ textarea {
   font-size: 60px;
   line-height: 1;
   filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.18));
+}
+/* 季節アイコンを画像に差し替えたとき(assets/ui の season*.png) */
+.season-emoji.has-img {
+  width: 76px;
+  height: 76px;
+  margin: 0 auto;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
 }
 .season-name {
   color: var(--season-color, #7c5cff);
