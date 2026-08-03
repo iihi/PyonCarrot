@@ -1,6 +1,7 @@
 // ローポリ3Dモデルをコードで生成（外部アセット不要）
 import * as THREE from 'three';
 import { GRID } from './level.js';
+import { loadedTexture } from './textureLoader.js';
 
 // 段差1レベルぶんの高さ(ワールド単位)。低めにして奥のマスが隠れにくいようにする
 export const HSTEP = 0.35;
@@ -352,15 +353,9 @@ export function makeMound() {
   return g;
 }
 
-// 落ち葉のテクスチャ(Canvasで生成・全落ち葉マスで共有)。
+// 落ち葉テクスチャの絵柄を Canvas に描いて返す(書き出しツールと共用の単一ソース)。
 // 腐葉土の下地に、色とりどりの葉っぱ(尖った楕円+葉脈)を敷き詰めて描く。
-let _leafTex = null;
-function leafTexture() {
-  if (_leafTex !== null) return _leafTex;
-  if (typeof document === 'undefined') {
-    _leafTex = false; // node(書き出しツール)ではテクスチャ無し=単色フォールバック
-    return _leafTex;
-  }
+export function drawLeafCanvas() {
   const c = document.createElement('canvas');
   c.width = c.height = 256;
   const ctx = c.getContext('2d');
@@ -399,7 +394,21 @@ function leafTexture() {
     ctx.stroke();
     ctx.restore();
   }
-  const tex = new THREE.CanvasTexture(c);
+  return c;
+}
+
+// 落ち葉テクスチャ(全落ち葉マスで共有)。
+// assets/textures/leaf.png があればそれを、無ければ Canvas 生成にフォールバック。
+let _leafTex = null;
+function leafTexture() {
+  const ext = loadedTexture('leaf');
+  if (ext) return ext;
+  if (_leafTex !== null) return _leafTex;
+  if (typeof document === 'undefined') {
+    _leafTex = false; // node(書き出しツール)ではテクスチャ無し=単色フォールバック
+    return _leafTex;
+  }
+  const tex = new THREE.CanvasTexture(drawLeafCanvas());
   tex.colorSpace = THREE.SRGBColorSpace;
   _leafTex = tex;
   return _leafTex;
@@ -724,7 +733,7 @@ export const SEASON_BG = {
 };
 
 // 季節ごとの飾り(木・花・岩)の色味
-const SEASON_DECO = {
+export const SEASON_DECO = {
   spring: { tree: 0x4d9e4f, trunk: 0x8a5a33, rock: 0xb9c2c9, flowers: [0xff9ec7, 0xffffff, 0xfff05e], snow: false },
   summer: { tree: 0x2f8f43, trunk: 0x7a4d2b, rock: 0xb9c2c9, flowers: [0xff5e7a, 0xffd23a, 0x59c3ff], snow: false },
   autumn: { tree: 0xd9702a, trunk: 0x6f4423, rock: 0xb0a48f, flowers: [0xe8632a, 0xf2b13a, 0xc23a3a], snow: false },
@@ -732,13 +741,13 @@ const SEASON_DECO = {
 };
 
 // ---------- 島と背景 ----------
-export function makeIsland(gridSize, season = 'spring') {
+// 背景は「島の土台・木・岩・花」の部品に分けてある(書き出しツールと共用の単一ソース)。
+// デザイナーへの書き出し(assets/reference/)や将来の差し替えは部品単位で行う。
+
+// 島の土台（水面＋草地）。ミニウサギが上端の外を歩けるよう広め。
+export function makeIslandBase(gridSize = GRID, bg = SEASON_BG.spring) {
   const g = new THREE.Group();
   const half = gridSize / 2;
-  const bg = SEASON_BG[season] || SEASON_BG.spring;
-  const deco = SEASON_DECO[season] || SEASON_DECO.spring;
-
-  // 水面
   const water = new THREE.Mesh(
     new THREE.CircleGeometry(26, 24),
     new THREE.MeshStandardMaterial({ color: bg.water, roughness: 1, flatShading: true })
@@ -748,7 +757,6 @@ export function makeIsland(gridSize, season = 'spring') {
   water.receiveShadow = true;
   g.add(water);
 
-  // 草の島（ミニウサギが上端の外を歩けるよう広めに）
   const island = new THREE.Mesh(
     new THREE.CylinderGeometry(half + 3.5, half + 4.3, 0.5, 18),
     mat(bg.grass)
@@ -756,13 +764,53 @@ export function makeIsland(gridSize, season = 'spring') {
   island.position.y = -0.25;
   island.receiveShadow = true;
   g.add(island);
+  return g;
+}
 
-  // まわりの飾り（木・花・岩）
-  const treeGreen = mat(deco.tree);
-  const trunk = mat(deco.trunk);
-  const rockMat = mat(deco.rock);
-  const snowMat = mat(0xffffff);
-  const stemMat = mat(0x4d9e4f);
+// 背景の木(幹＋葉。冬はてっぺんに雪)。原点＝足元。呼び出し側で位置・スケール指定。
+export function makeTree(deco = SEASON_DECO.spring) {
+  const t = new THREE.Group();
+  t.add(mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.3, 5), mat(deco.trunk), 0, 0.15, 0));
+  t.add(mesh(new THREE.ConeGeometry(0.32, 0.7, 6), mat(deco.tree), 0, 0.7, 0));
+  if (deco.snow) t.add(mesh(new THREE.ConeGeometry(0.2, 0.28, 6), mat(0xffffff), 0, 0.92, 0));
+  return t;
+}
+
+// 背景の岩。原点＝足元。
+export function makeRock(deco = SEASON_DECO.spring) {
+  const g = new THREE.Group();
+  const rock = mesh(new THREE.DodecahedronGeometry(0.16, 0), mat(deco.rock), 0, 0.06, 0);
+  rock.scale.set(1, 0.7, 1);
+  g.add(rock);
+  return g;
+}
+
+// 背景の花(茎＋花)。花色は deco.flowers から rand で選ぶ。原点＝足元。
+export function makeFlower(deco = SEASON_DECO.spring, rand = mulberryLocal(1)) {
+  const f = new THREE.Group();
+  f.add(mesh(new THREE.CylinderGeometry(0.015, 0.02, 0.18, 4), mat(0x4d9e4f), 0, 0.09, 0));
+  f.add(
+    mesh(
+      new THREE.SphereGeometry(0.05, 5, 4),
+      mat(deco.flowers[Math.floor(rand() * deco.flowers.length)]),
+      0,
+      0.2,
+      0
+    )
+  );
+  return f;
+}
+
+// 島全体を組み立てる（土台＋まわりに木・岩・花を散らす）。
+// 散らす位置はシードで固定。rand の消費順は従来のままなので見た目は不変。
+export function makeIsland(gridSize, season = 'spring') {
+  const g = new THREE.Group();
+  const half = gridSize / 2;
+  const bg = SEASON_BG[season] || SEASON_BG.spring;
+  const deco = SEASON_DECO[season] || SEASON_DECO.spring;
+
+  g.add(makeIslandBase(gridSize, bg));
+
   const rand = mulberryLocal(12345);
   for (let i = 0; i < 26; i++) {
     const ang = rand() * Math.PI * 2;
@@ -771,33 +819,17 @@ export function makeIsland(gridSize, season = 'spring') {
     const z = Math.sin(ang) * r;
     const kind = rand();
     if (kind < 0.3) {
-      const t = new THREE.Group();
-      const tr = mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.3, 5), trunk, 0, 0.15, 0);
-      const lv = mesh(new THREE.ConeGeometry(0.32, 0.7, 6), treeGreen, 0, 0.7, 0);
-      t.add(tr, lv);
-      if (deco.snow) {
-        // 冬は木のてっぺんに雪をのせる
-        t.add(mesh(new THREE.ConeGeometry(0.2, 0.28, 6), snowMat, 0, 0.92, 0));
-      }
+      const t = makeTree(deco);
       t.position.set(x, 0, z);
       t.scale.setScalar(0.7 + rand() * 0.9);
       g.add(t);
     } else if (kind < 0.5) {
-      const rock = mesh(new THREE.DodecahedronGeometry(0.16, 0), rockMat, x, 0.06, z);
-      rock.scale.set(1, 0.7, 1);
+      const rock = makeRock(deco);
+      rock.position.set(x, 0, z);
       rock.rotation.y = rand() * Math.PI;
       g.add(rock);
     } else {
-      const f = new THREE.Group();
-      const stem = mesh(new THREE.CylinderGeometry(0.015, 0.02, 0.18, 4), stemMat, 0, 0.09, 0);
-      const bloom = mesh(
-        new THREE.SphereGeometry(0.05, 5, 4),
-        mat(deco.flowers[Math.floor(rand() * deco.flowers.length)]),
-        0,
-        0.2,
-        0
-      );
-      f.add(stem, bloom);
+      const f = makeFlower(deco, rand);
       f.position.set(x, 0, z);
       g.add(f);
     }
@@ -818,7 +850,8 @@ function mulberryLocal(a) {
 // ---------- 数字バッジ（原作準拠の色分け: 1=青 2=ピンク 3=赤） ----------
 const NUMBER_COLORS = { 1: '#3b6fe0', 2: '#e858b8', 3: '#e8483b' };
 
-export function makeNumberSprite(value) {
+// 数字バッジの絵柄を Canvas に描いて返す(書き出しツールと共用の単一ソース)。
+export function drawNumberCanvas(value) {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = 128;
   const ctx = canvas.getContext('2d');
@@ -831,7 +864,13 @@ export function makeNumberSprite(value) {
   ctx.strokeText(String(value), 64, 70);
   ctx.fillStyle = NUMBER_COLORS[value] || '#3b6fe0';
   ctx.fillText(String(value), 64, 70);
-  const tex = new THREE.CanvasTexture(canvas);
+  return canvas;
+}
+
+export function makeNumberSprite(value) {
+  // assets/textures/number-<value>.png があればそれを、無ければ Canvas 生成
+  let tex = loadedTexture('number' + value);
+  if (!tex) tex = new THREE.CanvasTexture(drawNumberCanvas(value));
   const sprite = new THREE.Sprite(
     new THREE.SpriteMaterial({ map: tex, depthTest: false })
   );

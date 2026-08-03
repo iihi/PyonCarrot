@@ -27,6 +27,11 @@ export const MODEL_FILES = {
   sled: 'sled.glb', // ソリ（冬）
   goal: 'goal.glb', // ゴールの祠（台座＋旗）
   mound: 'mound.glb', // 畑マスの土台
+  // 背景(島・飾り)。配置はコード側で行い、見た目だけ差し替える想定。
+  islandBase: 'island-base.glb', // 島の土台(水面＋草地)
+  tree: 'tree.glb', // 背景の木
+  rock: 'rock.glb', // 背景の岩
+  flower: 'flower.glb', // 背景の花
 };
 
 const base = (import.meta.env && import.meta.env.BASE_URL) || './';

@@ -17,7 +17,14 @@ import {
   makeSpring,
   makeCart,
   makeSled,
+  makeIslandBase,
+  makeTree,
+  makeRock,
+  makeFlower,
+  SEASON_BG,
+  SEASON_DECO,
 } from '../models.js';
+import { GRID } from '../level.js';
 
 // userData のパーツ参照に分かりやすい名前を付けて書き出す
 // （デザイナーが「どこが動くパーツか」を把握しやすいように）
@@ -57,6 +64,12 @@ const DEFS = [
   { key: 'spring', label: 'ジャンプ台のバネ', build: () => annotate(makeSpring().group, 'spring') },
   { key: 'cart', label: 'トロッコ', build: () => annotate(makeCart().railGroup, 'cart_rig') },
   { key: 'sled', label: 'ソリ', build: () => annotate(makeSled().railGroup, 'sled_rig') },
+  // 背景(島・木・岩・花)。色は季節で変わるので春の色で書き出す。冬の木は雪付き。
+  { key: 'island-base', label: '島の土台(水面+草地)', build: () => annotate(makeIslandBase(GRID, SEASON_BG.spring), 'island_base') },
+  { key: 'tree', label: '背景の木', build: () => annotate(makeTree(SEASON_DECO.spring), 'tree') },
+  { key: 'tree-winter', label: '背景の木(冬/雪)', build: () => annotate(makeTree(SEASON_DECO.winter), 'tree_winter') },
+  { key: 'rock', label: '背景の岩', build: () => annotate(makeRock(SEASON_DECO.spring), 'rock') },
+  { key: 'flower', label: '背景の花', build: () => annotate(makeFlower(SEASON_DECO.spring), 'flower') },
 ];
 
 const exporter = new GLTFExporter();

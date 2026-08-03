@@ -15,6 +15,7 @@ import {
 import { GameScene } from './scene3d.js';
 import { Sfx } from './sfx.js';
 import { TUTORIAL_STEPS } from './tutorial.js';
+import { uiSkinUrl } from './uiSkin.js';
 
 const SAVE_KEY = 'pyoncarrot_save_v1';
 
@@ -30,7 +31,7 @@ const SEASON_INTRO = {
   summer: { emoji: '☀️', name: '夏', color: '#2fb2e0', text: '<b>ジャンプ台</b>とうじょう！<br>のって飛ぶと<b>2マス遠く</b>までとべるよ。' },
   autumn: { emoji: '🍂', name: '秋', color: '#e0842f', text: '<b>つむじ風</b>があらわれた！<br>のると対(つい)の<b>落ち葉マス</b>まで<br>ビュ〜ンと運ばれるよ。' },
   winter: { emoji: '❄️', name: '冬', color: '#4aa3d6', text: '<b>ソリ</b>にのって、進んだ方向へすべって、<br>かべ(段差や畑)の手前で止まる。<br>止まった所から<b>数字ぶん</b>ジャンプ！' },
-  allin: { emoji: '🎊', name: 'ぜんぶ！', color: '#7c5cff', text: 'ここからは<b>ぜんぶ</b>でてくる！' },
+  allin: { emoji: '🎊', name: 'オールシーズン', color: '#7c5cff', text: 'ここからは<b>ぜんぶ</b>でてくる！' },
 };
 
 const $ = (id) => document.getElementById(id);
@@ -683,7 +684,19 @@ export class Game {
 
   _showSeasonIntro(key) {
     const info = SEASON_INTRO[key];
-    $('season-emoji').textContent = info.emoji;
+    // 上部アイコン: 差し替え画像(assets/ui/season*.png)があれば画像、無ければ絵文字
+    const iconEl = $('season-emoji');
+    const skinKey = 'season' + key.charAt(0).toUpperCase() + key.slice(1);
+    const url = uiSkinUrl(skinKey);
+    if (url) {
+      iconEl.textContent = '';
+      iconEl.style.backgroundImage = `url("${url}")`;
+      iconEl.classList.add('has-img');
+    } else {
+      iconEl.style.backgroundImage = '';
+      iconEl.classList.remove('has-img');
+      iconEl.textContent = info.emoji;
+    }
     $('season-name').textContent = info.name;
     $('season-text').innerHTML = info.text;
     const box = $('modal-season').querySelector('.season-box');
