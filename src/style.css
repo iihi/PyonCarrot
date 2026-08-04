@@ -15,9 +15,9 @@
 
   /* ボタン配色(仮): タイトルで緑が草地と同化 / グレーが押下不可に見える問題の暫定対応。
      通常ボタン=青系、副ボタン=紫系にして、背景の緑・無効グレーと差別化する。 */
-  --btn-top: #57b0ee;
-  --btn: #2f96db;
-  --btn-dark: #1f74b0;
+  --btn-top: #a7ddf6;
+  --btn: #63c2ec;
+  --btn-dark: #3ea0cf;
   --btn-sub-top: #b492e0;
   --btn-sub: #9068cf;
   --btn-sub-dark: #6f49ac;
