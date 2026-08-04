@@ -687,6 +687,10 @@ html.skin-icon-sound #btn-sound:not(.on)::after {
   /* 影も季節色から暗くして合わせる(.big-btn.primary のオレンジ影を上書き) */
   box-shadow: 0 5px 0 color-mix(in srgb, var(--season-color, #7c5cff) 68%, #000);
 }
+/* 押下時は影を消して沈める(この詳細度でないと上の季節影が残り、影ごと下がって見える) */
+.season-box .big-btn.primary:active {
+  box-shadow: none;
+}
 
 .help-list {
   text-align: left;
