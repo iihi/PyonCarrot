@@ -182,6 +182,14 @@ const CARROT_CENTER = 0.44 * CARROT_SCALE;
 
 // コイルバネ(ジャンプ台)。土台いっぱいの大きな螺旋+天板。金属光沢のシルバー。
 export function makeSpring() {
+  // デザイナー提供の glb(public/assets/models/spring.glb)があれば差し替え。
+  // ニンジンを乗せる高さ topY は、glb の実際の上端から求める。
+  const glb = loadedModel('spring');
+  if (glb) {
+    const box = new THREE.Box3().setFromObject(glb);
+    const topY = (Number.isFinite(box.max.y) ? box.max.y : 0.64) + 0.04;
+    return { group: glb, topY };
+  }
   const g = new THREE.Group();
   // コイルは明るい光沢シルバー、上下の皿は一段濃いシルバー
   const coilMat = mat(0xe2e7ee, { roughness: 0.22, metalness: 0.75 });
@@ -315,9 +323,54 @@ export function makeSled() {
 }
 
 // ---------- つむじ風(whirl) マス ----------
+// つむじ風glbの「風」半透明を、どれだけ濃く(透過を抑えて)見せるかの倍率。1で無変更。
+const WHIRL_ALPHA_GAIN = 2.4;
+
+// オブジェクト配下の全マテリアルを1次元配列で集める(配列マテリアルも展開)。
+function collectMaterials(obj) {
+  const out = [];
+  obj.traverse((o) => {
+    if (!o.isMesh || !o.material) return;
+    if (Array.isArray(o.material)) out.push(...o.material);
+    else out.push(o.material);
+  });
+  return out;
+}
+
 // 半透明の輪を漏斗状に積み、scene3d の _frame で回して竜巻に見せる。
 // 乗ると他マスへ飛ばされ、使い切りで消える(ニンジン・数字なし)。
 export function makeWhirl() {
+  // デザイナー提供の glb(public/assets/models/whirl.glb)があれば差し替え。
+  // 回転(spin)とタップ判定(不可視の芯)は従来どおり効かせる。葉のひらひらは無し。
+  const glbW = loadedModel('whirl');
+  if (glbW) {
+    const g = new THREE.Group();
+    const spin = new THREE.Group();
+    spin.add(glbW); // 漏斗ごとY軸で回す
+    g.add(spin);
+    // 「風」の半透明が薄すぎたので、テクスチャのアルファを底上げして透過を抑える。
+    // (opacityは既に1で、透過はテクスチャのアルファ由来のため、シェーダで最終αを持ち上げる)
+    for (const m of collectMaterials(glbW)) {
+      if (!m || !m.transparent) continue;
+      m.onBeforeCompile = (shader) => {
+        shader.fragmentShader = shader.fragmentShader.replace(
+          '#include <map_fragment>',
+          '#include <map_fragment>\n\tdiffuseColor.a = min( 1.0, diffuseColor.a * ' +
+            WHIRL_ALPHA_GAIN.toFixed(2) +
+            ' );'
+        );
+      };
+      m.needsUpdate = true;
+    }
+    const hit = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.42, 0.42, 1.15, 8),
+      new THREE.MeshBasicMaterial({ visible: false })
+    );
+    hit.position.y = 0.6;
+    g.add(hit);
+    g.userData.spin = spin;
+    return g;
+  }
   const g = new THREE.Group();
   const spin = new THREE.Group();
   g.add(spin);
