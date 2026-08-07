@@ -22,6 +22,7 @@ export const MODEL_FILES = {
   whirl: 'whirl.glb', // つむじ風
   leafBase: 'leaf-base.glb', // 落ち葉マスの土台(つむじ風の対)
   carrot: 'carrot.glb', // ニンジン1本
+  carrotGold: 'carrot-gold.glb', // 金ニンジン1本
   spring: 'spring.glb', // ジャンプ台のバネ
   cart: 'cart.glb', // トロッコ
   sled: 'sled.glb', // ソリ（冬）
@@ -66,9 +67,21 @@ export async function initModels(dir = 'assets/models/') {
 }
 
 // 読み込み済み glb のクローンを返す。未提供なら null（呼び出し側でフォールバック）。
+// ※ Object3D.clone() はマテリアルを共有参照のままにするため、そのままだと
+//   「1つのマスのハイライト(発光)が同じモデル全部に波及」してしまう。
+//   インスタンスごとにマテリアルも複製して分離する。
 export function loadedModel(key) {
   const tpl = cache.get(key);
-  return tpl ? tpl.clone(true) : null;
+  if (!tpl) return null;
+  const obj = tpl.clone(true);
+  obj.traverse((o) => {
+    if (o.isMesh && o.material) {
+      o.material = Array.isArray(o.material)
+        ? o.material.map((m) => m.clone())
+        : o.material.clone();
+    }
+  });
+  return obj;
 }
 
 // そのキーの差し替えデータが用意されているか

@@ -1,12 +1,13 @@
 import { Game } from './game.js';
 import { initTextures } from './textureLoader.js';
+import { initModels } from './modelLoader.js';
 import { applyUiSkin } from './uiSkin.js';
 
 // UI(ボタン・ダイアログ)の画像スキンを適用(assets/ui/manifest.json。無ければ従来のまま)。
 applyUiSkin();
 
-// 差し替え画像(assets/textures/*.png)を先に読み込んでからゲーム開始。
-// 画像が無ければ従来どおりコード生成にフォールバックする(見た目は変わらない)。
-initTextures().finally(() => {
+// 差し替え画像(textures/*.png)と差し替えモデル(models/*.glb)を先に読み込んでから開始。
+// 無いものは従来どおりコード生成にフォールバックする(見た目は変わらない)。
+Promise.all([initTextures(), initModels()]).finally(() => {
   window.game = new Game();
 });

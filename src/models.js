@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { GRID } from './level.js';
 import { loadedTexture } from './textureLoader.js';
+import { loadedModel } from './modelLoader.js';
 
 // 段差1レベルぶんの高さ(ワールド単位)。低めにして奥のマスが隠れにくいようにする
 export const HSTEP = 0.35;
@@ -103,6 +104,15 @@ export function makeRabbit() {
 
 // ---------- ニンジン1本 ----------
 export function makeCarrot(scale = 1, golden = false) {
+  // デザイナー提供のglbがあれば差し替える。
+  //   通常:  public/assets/models/carrot.glb
+  //   金:    public/assets/models/carrot-gold.glb
+  // 無ければ以下のコード生成にフォールバックする。
+  const m = loadedModel(golden ? 'carrotGold' : 'carrot');
+  if (m) {
+    m.scale.setScalar(scale);
+    return m;
+  }
   const g = new THREE.Group();
   const orange = golden
     ? mat(0xffd24a, { emissive: 0x8a6a00, emissiveIntensity: 0.45, roughness: 0.45 })
@@ -136,22 +146,39 @@ export function makeCarrot(scale = 1, golden = false) {
 const ROW_AXIS = { x: Math.SQRT1_2, z: -Math.SQRT1_2 };
 const FWD_AXIS = { x: Math.SQRT1_2, z: Math.SQRT1_2 };
 
-// ニンジンのサイズは本数によらず統一（2本用サイズ）
-const CARROT_SCALE = 1.05;
+// ニンジンのサイズは本数によらず統一。葉が半分ほどマスに収まる大きさ。
+const CARROT_SCALE = 0.85;
 
-// 本数ごとの配置 { r: 横方向, f: 手前方向 }。3本は▽置き（奥2本・手前1本）
+// ニンジンは「横倒し・葉が画面右(＝ROW_AXIS方向)」に寝かせて置く。
+// 本数ごとの配置 { f: 手前方向オフセット, y: 追加の高さ }。
+//   1本 → 中央に1本
+//   2本 → 前後に2本並べて横倒し
+//   3本 → 前後に3本並べて横倒し
 const CARROT_LAYOUT = {
-  1: [{ r: 0, f: 0 }],
+  1: [{ f: 0, y: 0 }],
   2: [
-    { r: -0.19, f: 0 },
-    { r: 0.19, f: 0 },
+    { f: -0.12, y: 0 },
+    { f: 0.12, y: 0 },
   ],
   3: [
-    { r: -0.2, f: -0.11 },
-    { r: 0.2, f: -0.11 },
-    { r: 0, f: 0.16 },
+    { f: -0.18, y: 0 },
+    { f: 0, y: 0 },
+    { f: 0.18, y: 0 }, // ピラミッドをやめて3本横並び(同じ高さ)
   ],
 };
+
+// 寝かせたニンジンが土台に埋もれないよう、根元の基準の高さ。
+const CARROT_BASE_Y = 0.4;
+
+// 寝かせる回転: モデルの上(+Y)を画面右(ROW_AXIS)へ倒す＝葉が右に来る。
+const CARROT_LIE = new THREE.Quaternion().setFromUnitVectors(
+  new THREE.Vector3(0, 1, 0),
+  new THREE.Vector3(ROW_AXIS.x, 0, ROW_AXIS.z).normalize()
+);
+// 寝かせると基点(根元)を軸に右へ伸びるので、中心が土台中央に来るよう左へ引く量。
+// スケールに追従させる(小さくすると引く量も減る)。
+// 大きめに引いて、葉先が右へはみ出し過ぎず半分ほどマスに収まるようにする。
+const CARROT_CENTER = 0.44 * CARROT_SCALE;
 
 // コイルバネ(ジャンプ台)。土台いっぱいの大きな螺旋+天板。金属光沢のシルバー。
 export function makeSpring() {
@@ -483,10 +510,12 @@ export function makeTile(tile) {
   const carrots = new THREE.Group();
   for (const o of CARROT_LAYOUT[value] || CARROT_LAYOUT[1]) {
     const c = makeCarrot(CARROT_SCALE, !!tile.golden);
+    c.quaternion.copy(CARROT_LIE); // 横倒し(葉が画面右)
+    const r = -CARROT_CENTER; // 中心合わせ
     c.position.set(
-      ROW_AXIS.x * o.r + FWD_AXIS.x * o.f,
-      0.18,
-      ROW_AXIS.z * o.r + FWD_AXIS.z * o.f
+      ROW_AXIS.x * r + FWD_AXIS.x * o.f,
+      CARROT_BASE_Y + (o.y || 0),
+      ROW_AXIS.z * r + FWD_AXIS.z * o.f
     );
     carrots.add(c);
   }
