@@ -667,7 +667,7 @@ export class Game {
       this._eatTile(0);
       this.curIdx = 0;
       this.stance = stanceFromTile(this.level, 0);
-      this.scene.setOnSpring(!!this.level.tiles[0].spring);
+      this.scene.setOnSpring(!!this.level.tiles[0].spring, 0);
       this.state = 'playing';
       this._updateHUD();
       this._updateReachable();
@@ -914,7 +914,7 @@ export class Game {
       this._eatTile(leafIdx); // 運ばれた先の落ち葉マスのニンジンをパクッ
       this.stance = landInfo.stance;
       this.curIdx = leafIdx;
-      this.scene.setOnSpring(!!this.level.tiles[leafIdx].spring);
+      this.scene.setOnSpring(!!this.level.tiles[leafIdx].spring, leafIdx);
       if (this._tut && this._tut.on && this._tutAfterMove(id)) return;
       this.state = 'playing';
       this._updateHUD();
@@ -938,7 +938,7 @@ export class Game {
     this.stance = landInfo.stance;
     this.curIdx = tile.cart ? -1 : id;
 
-    this.scene.setOnSpring(this.curIdx >= 0 && this.level.tiles[this.curIdx].spring);
+    this.scene.setOnSpring(this.curIdx >= 0 && this.level.tiles[this.curIdx].spring, this.curIdx);
 
     if (this._tut && this._tut.on && this._tutAfterMove(id)) return;
 

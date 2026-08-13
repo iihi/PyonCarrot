@@ -102,6 +102,38 @@ export function makeRabbit() {
   return outer;
 }
 
+// トゥーン風の縁取り(反転ハル)。各メッシュを法線方向に少し膨らませた BackSide の
+// 複製を裏側に描いて、シルエットに沿った縁取り線を出す。発光ハイライトには
+// 影響しない(MeshBasicMaterialは emissive を持たないため grabEmissive が無視する)。
+const OUTLINE_COLOR = 0x3a2412; // 濃い茶(黒に近い)
+const OUTLINE_THICKNESS = 0.035; // 法線方向の押し出し量(オブジェクト空間)
+function addOutline(root, thickness = OUTLINE_THICKNESS, color = OUTLINE_COLOR) {
+  const meshes = [];
+  root.traverse((o) => {
+    if (o.isMesh && o.geometry && o.geometry.attributes && o.geometry.attributes.normal) {
+      meshes.push(o);
+    }
+  });
+  for (const m of meshes) {
+    // 法線方向に thickness ぶん膨らませた形状を焼き込み、裏面(BackSide)だけ描いて縁取りにする。
+    const geo = m.geometry.clone();
+    const pos = geo.attributes.position;
+    const nor = geo.attributes.normal;
+    for (let i = 0; i < pos.count; i++) {
+      pos.setXYZ(
+        i,
+        pos.getX(i) + nor.getX(i) * thickness,
+        pos.getY(i) + nor.getY(i) * thickness,
+        pos.getZ(i) + nor.getZ(i) * thickness
+      );
+    }
+    pos.needsUpdate = true;
+    const mat = new THREE.MeshBasicMaterial({ color, side: THREE.BackSide });
+    const outline = new THREE.Mesh(geo, mat);
+    m.add(outline); // 本体と同じ変換を継承(renderOrderは本体と同じ既定=0)
+  }
+}
+
 // ---------- ニンジン1本 ----------
 export function makeCarrot(scale = 1, golden = false) {
   // デザイナー提供のglbがあれば差し替える。
@@ -111,6 +143,7 @@ export function makeCarrot(scale = 1, golden = false) {
   const m = loadedModel(golden ? 'carrotGold' : 'carrot');
   if (m) {
     m.scale.setScalar(scale);
+    addOutline(m); // トゥーン風の縁取り
     return m;
   }
   const g = new THREE.Group();
@@ -137,6 +170,7 @@ export function makeCarrot(scale = 1, golden = false) {
     g.add(leaf);
   }
   g.scale.setScalar(scale);
+  addOutline(g); // トゥーン風の縁取り
   return g;
 }
 
@@ -497,6 +531,10 @@ function leafTexture() {
 // 落ち葉マスの土台（つむじ風の対＝飛ばされる先）。
 // 落ち葉テクスチャを上面と側面に貼った「積もった落ち葉の山」。機能は畑マスと同じ。
 export function makeLeafBase() {
+  // デザイナー提供の glb(public/assets/models/leaf-base.glb)があれば差し替え。
+  // つむじ風で吹き飛ぶ演出はこのグループを縮小/移動するだけなので glb でも成立する。
+  const glb = loadedModel('leafBase');
+  if (glb) return glb;
   const g = new THREE.Group();
   const tex = leafTexture();
   const leafMat = (fallback) =>
@@ -558,6 +596,8 @@ export function makeTile(tile) {
     const spring = makeSpring();
     g.add(spring.group);
     carrotLift = spring.topY - 0.18; // ニンジンをバネの上へ持ち上げる
+    // ウサギがこのバネの天板に立てるように上端の高さを保持(scene3dが参照)
+    g.userData.springTopY = spring.topY;
   }
 
   const carrots = new THREE.Group();
@@ -666,7 +706,51 @@ export function makeGoalRabbit() {
 }
 
 // ---------- ゴール（ピンクウサギ＋花の台座＋旗） ----------
+// goal.glb に一体化されている「静止ゴール兎」だけを隠すためのヘルパー。
+// ゲームはゴール兎にアニメ(待機・振り向き・クリア演出)を付けるが、それはコード側の
+// リグ構造に依存するため、glbの静止兎は隠してコード生成のアニメ兎に差し替える。
+//
+// ★判別はマテリアル色ベースのヒューリスティック（この goal.glb 前提）:
+//   兎の目の黒(#2b2b2b)や体のピンク(#ffaac4/#ff85ad/#fff0f5)を含むノードを兎とみなす。
+//   モデルを作り直して色が変わった場合はこの一覧を更新する必要がある。
+const GOAL_RABBIT_COLORS = new Set(['2b2b2b', 'ffaac4', 'ff85ad', 'fff0f5']);
+function hideGlbGoalRabbit(glb) {
+  const hide = new Set();
+  glb.traverse((o) => {
+    if (!o.isMesh || !o.material) return;
+    const m = Array.isArray(o.material) ? o.material[0] : o.material;
+    const hex = m && m.color && m.color.getHexString();
+    if (hex && GOAL_RABBIT_COLORS.has(hex) && o.parent) hide.add(o.parent);
+  });
+  hide.forEach((n) => (n.visible = false)); // ノードごと(=兎まるごと)非表示
+  return hide.size;
+}
+
 export function makeGoal() {
+  // デザイナー提供の glb(public/assets/models/goal.glb)があれば祠の見た目を差し替え。
+  // ※ゴール兎(待機モーション・振り向き・クリア演出)はコード側の構造に依存するため、
+  //   従来のコード生成の兎を載せ、userData.bunny に保持する(goal-rabbit.glb は別途)。
+  const glbGoal = loadedModel('goal');
+  if (glbGoal) {
+    const g = new THREE.Group();
+    hideGlbGoalRabbit(glbGoal); // glb同梱の静止ゴール兎だけ隠す(祠・旗は残す)
+    g.add(glbGoal); // 祠(台座+花+旗など)の見た目
+    // glbの旗ノード("flag")を揺らせるように参照を持たせる(元の向きを基準に揺らす)
+    let flagNode = null;
+    glbGoal.traverse((o) => {
+      if (o.name === 'flag') flagNode = o;
+    });
+    if (flagNode) {
+      flagNode.userData.baseRotY = flagNode.rotation.y;
+      g.userData.flag = flagNode;
+    }
+    const bunny = makeGoalRabbit();
+    bunny.position.y = 0.2;
+    bunny.rotation.y = Math.PI / 4; // カメラの方を向く
+    g.add(bunny);
+    g.userData.bunny = bunny;
+    return g;
+  }
   const g = new THREE.Group();
   // クリーム色の台座（草・土と明確に違う色）
   const mound = mesh(

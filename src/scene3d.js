@@ -107,8 +107,11 @@ export class GameScene {
   }
 
   // マス(gx,gy)の上にウサギが立つ高さ
+  // ジャンプ台マスは、コイルに埋もれないようバネ天板の上に立たせる。
   _standY(gx, gy) {
-    return 0.22 + this._cellY(gx, gy);
+    const springTop = this.springStandByCell && this.springStandByCell[`${gx},${gy}`];
+    const stand = springTop != null ? springTop : 0.22;
+    return stand + this._cellY(gx, gy);
   }
 
   // 吹き出し等のHTML配置用: マス上のワールド座標を画面ピクセルに変換
@@ -182,6 +185,9 @@ export class GameScene {
     this.scene.add(this.terrain);
 
     this.onSpring = false;
+    this.springTile = null;
+    // バネマスの「ウサギが立つ天板の高さ」をグリッド座標で引けるように保持
+    this.springStandByCell = {};
     level.tiles.forEach((t, i) => {
       const group = t.whirl ? makeWhirl() : makeTile(t);
       const baseY = this._cellY(t.x, t.y);
@@ -193,6 +199,8 @@ export class GameScene {
         group.add(number);
       }
       this.world.add(group);
+      const springTopY = group.userData.springTopY || 0;
+      if (t.spring && springTopY) this.springStandByCell[`${t.x},${t.y}`] = springTopY;
       this.tileMeshes.push({
         group,
         number,
@@ -201,6 +209,7 @@ export class GameScene {
         alive: true,
         spring: !!t.spring,
         whirl: !!t.whirl,
+        springTopY,
       });
 
       // 登場アニメーション
@@ -995,8 +1004,10 @@ export class GameScene {
     this._sinkTile(idx);
   }
 
-  setOnSpring(v) {
+  setOnSpring(v, idx) {
     this.onSpring = v;
+    // 乗っているバネマスを控える(バウンドをそのバネの伸縮に同期させるため)
+    this.springTile = v && idx != null && idx >= 0 ? this.tileMeshes[idx] : null;
   }
 
   // 空きマス(トロッコ降車後)の次のジャンプ力を、そのマスの位置に固定表示する。
@@ -1190,9 +1201,12 @@ export class GameScene {
       }
     }
     if (this.goalMesh) {
-      // 旗の揺れ
+      // 旗の揺れ（基準姿勢を中心に左右へ。glbは元の向き、コード版はPI/4が基準）
       const flag = this.goalMesh.userData.flag;
-      if (flag) flag.rotation.y = Math.PI / 4 + Math.sin(this.time * 4) * 0.18;
+      if (flag) {
+        const base = flag.userData.baseRotY != null ? flag.userData.baseRotY : Math.PI / 4;
+        flag.rotation.y = base + Math.sin(this.time * 4) * 0.18;
+      }
     }
 
     // ウサギの待機モーション（内側グループだけを動かすのでジャンプと干渉しない）
@@ -1216,10 +1230,14 @@ export class GameScene {
       }
 
       if (this.onSpring && !rabbitBusy && !eating) {
-        // ジャンプ台の上ではその場でぽよんぽよんバウンドし続ける
-        const bt = Math.abs(Math.sin(this.time * 5.5));
-        inner.position.y = bt * 0.18;
-        stretch *= 1 + 0.15 * bt - 0.1 * (1 - bt);
+        // ジャンプ台の上では、バネの伸縮(scale.y)に合わせてウサギも上下する。
+        // 同じバネの実値を読むので位相・周波数が必ず一致し、刺さらない。
+        const st = this.springTile;
+        const sy = st ? st.group.scale.y : 1;
+        const topY = st ? st.springTopY || 0.64 : 0.64;
+        inner.position.y = topY * (sy - 1); // 天板の上下に追従
+        const c = Math.max(0, Math.min(1, (sy - 0.94) / 0.1)); // 0=縮む,1=伸びる
+        stretch *= 1 + 0.15 * c - 0.1 * (1 - c); // 伸びで伸長・縮みで潰れ
       } else {
         // ときどき足踏みホップ（伸び縮みのジャンプモーション付き。食事中・移動中はしない）
         const hopT = this.time % 4.3;
