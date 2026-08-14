@@ -1195,7 +1195,7 @@ export class Game {
     document.querySelectorAll('.fly-carrot').forEach((e) => e.remove());
   }
 
-  // 残ニンジンのカウントアップ(HUD側はカウントダウン)
+  // とったニンジンのカウントアップ(HUD側はカウントダウン)
   _countUpCarrots(total) {
     this._countUpStop = false;
     const dur = 900;
