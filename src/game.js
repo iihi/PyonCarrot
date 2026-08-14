@@ -51,6 +51,7 @@ export class Game {
     this.carrots = 0; // このステージで食べたニンジン(持ち越しなし)
     this.retryCount = 0; // このステージのリトライ回数(倍率用)
     this.codeMode = false; // コード入力プレイ(ワンショット。セーブ・ハイスコアに影響させない)
+    this.replayFromSelect = false; // ステージえらびからの再挑戦中(クリア後は一覧へ戻る)
 
     this.scene.onTileTap = (id) => this.tryMove(id);
     this._bindUI();
@@ -232,6 +233,15 @@ export class Game {
       this.sfx.click();
       this._openCodeInput();
     };
+    // ステージえらび: クリア済みステージを選んで再挑戦(★あつめ)
+    $('btn-stages').onclick = () => {
+      this.sfx.click();
+      this._openStages();
+    };
+    $('stages-close').onclick = () => {
+      this.sfx.click();
+      this._hide('modal-stages');
+    };
     $('btn-help').onclick = () => {
       this.sfx.click();
       this._show('modal-help');
@@ -276,9 +286,12 @@ export class Game {
       this.sfx.click();
       this._cancelClearSeq();
       // コード入力プレイはワンショット: 次へ進まず、セーブにもハイスコアにも触れずタイトルへ
+      // (ステージえらびからの再挑戦なら、★の更新を反映して一覧へ戻る)
       if (this.codeMode) {
         this._hide('modal-clear');
+        const backToSelect = this.replayFromSelect;
         this._showTitle();
+        if (backToSelect) this._openStages();
         return;
       }
       // このステージの結果を確定(ハイスコア更新)
@@ -419,6 +432,7 @@ export class Game {
       'modal-over',
       'modal-share',
       'modal-version',
+      'modal-stages',
     ].some((id) => !$(id).classList.contains('hidden'));
   }
 
@@ -453,9 +467,14 @@ export class Game {
     this._show('screen-title');
     this._hide('hud');
     this.codeMode = false; // タイトルに戻ったら通常モードへ
+    this.replayFromSelect = false;
+    this._hide('modal-stages');
     // つづきデータが無ければ「つづきから」は押せない
     const save = this._loadSave();
     $('btn-continue').disabled = !save;
+    // クリア済みステージが無ければ「ステージえらび」は押せない
+    const catForBtn = this._loadStars();
+    $('btn-stages').disabled = !(catForBtn && catForBtn.cleared > 0);
     const hi = $('title-hiscore');
     if (this.hiscore > 0) {
       hi.textContent = `ハイスコア ${fmt(this.hiscore)}`;
@@ -490,12 +509,56 @@ export class Game {
     this.sfx.click();
     // ワンショット: 教えてもらったステージだけを遊ぶ。セーブ・ハイスコアには一切触れない
     this.codeMode = true;
+    this.replayFromSelect = false; // 共有コードはタイトルへ戻る(★対象外の別シード想定)
     this.seed = parsed.seed;
     this.stage = parsed.stage;
     this.score = 0; // コードプレイのスコアは0から(累計には含めない)
     this.retryCount = 0;
     this._lastIntroKey = null;
     this._hide('modal-continue');
+    this.startStage();
+  }
+
+  // ステージえらび画面を開く: クリア済みステージ(1..cleared)を★付きで並べる。
+  _openStages() {
+    const cat = this._loadStars();
+    const cleared = cat ? cat.cleared : 0;
+    const stars = new Set(cat ? cat.stars : []);
+    if (cleared > 0) {
+      const rate = Math.round((stars.size / cleared) * 100);
+      $('stages-progress').textContent = `達成率 ${rate}%（★${stars.size}/${cleared}）`;
+    } else {
+      $('stages-progress').textContent = 'まだクリアしたステージがありません';
+    }
+    const grid = $('stages-grid');
+    grid.innerHTML = '';
+    for (let n = 1; n <= cleared; n++) {
+      const got = stars.has(n);
+      const cell = document.createElement('button');
+      cell.className = 'stage-cell' + (got ? ' starred' : '');
+      cell.innerHTML =
+        `<span class="stage-star">${got ? '★' : '☆'}</span><span>${n}</span>`;
+      cell.onclick = () => {
+        this.sfx.click();
+        this._playStage(n);
+      };
+      grid.appendChild(cell);
+    }
+    this._show('modal-stages');
+  }
+
+  // 選んだステージを再挑戦(ワンショット)。★は自分のカタログのシードなので付与対象。
+  _playStage(n) {
+    const cat = this._loadStars();
+    if (!cat) return;
+    this._hide('modal-stages');
+    this.codeMode = true; // 進行セーブ・ハイスコアには触れない
+    this.replayFromSelect = true; // クリア後は一覧へ戻る
+    this.seed = cat.seed; // 自分のカタログのシード = ★が付く
+    this.stage = n;
+    this.score = 0;
+    this.retryCount = 0;
+    this._lastIntroKey = null;
     this.startStage();
   }
 
@@ -1104,7 +1167,11 @@ export class Game {
 
     $('clear-stage').textContent = this.stage;
     // コードプレイはワンショット。「つぎのステージへ」→「タイトルへ」に
-    $('btn-next').textContent = this.codeMode ? 'タイトルへ' : 'つぎのステージへ';
+    $('btn-next').textContent = this.codeMode
+      ? this.replayFromSelect
+        ? 'ステージえらびへ'
+        : 'タイトルへ'
+      : 'つぎのステージへ';
     // 次ステージを先にセーブ（途中で閉じても続きから遊べる。コード時は_saveが無効）
     this._save(this.stage + 1);
     // 見つめ合い→一緒に喜ぶ演出が見えてからダイアログを出す

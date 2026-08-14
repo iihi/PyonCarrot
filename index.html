@@ -38,6 +38,7 @@
       <div class="title-buttons">
         <button id="btn-start" class="big-btn primary">はじめから</button>
         <button id="btn-continue" class="big-btn">つづきから</button>
+        <button id="btn-stages" class="big-btn">ステージえらび</button>
         <button id="btn-code" class="big-btn">コード入力</button>
         <button id="btn-help" class="big-btn sub">あそびかた</button>
       </div>
@@ -59,6 +60,17 @@
         </div>
         <button id="btn-paste" class="big-btn slim self-center">ペースト</button>
         <button id="continue-close" class="big-btn sub">とじる</button>
+      </div>
+    </div>
+
+    <!-- ステージえらび(★コレクション: クリア済みステージを選んで再挑戦。スコアは変わらない) -->
+    <div id="modal-stages" class="modal hidden">
+      <div class="modal-box stages-box">
+        <h2>ステージえらび</h2>
+        <p class="modal-text small" id="stages-progress">達成率 0%（★0/0）</p>
+        <p class="modal-text tiny code-note">全ニンジンを とると <b>★</b> がつくよ。（スコアは かわりません）</p>
+        <div id="stages-grid" class="stages-grid"></div>
+        <button id="stages-close" class="big-btn sub">とじる</button>
       </div>
     </div>
 

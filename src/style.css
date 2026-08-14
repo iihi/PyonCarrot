@@ -366,6 +366,53 @@ html.skin-icon-sound #btn-sound:not(.on)::after {
   display: inline-block;
 }
 
+/* ステージえらび(★コレクション) */
+.stages-box {
+  max-width: 92vw;
+}
+.stages-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  max-height: 46vh;
+  overflow-y: auto;
+  padding: 6px 4px;
+  margin: 8px 0 12px;
+}
+.stage-cell {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border: none;
+  border-radius: 12px;
+  background: #efe6d4;
+  color: var(--brown);
+  font-weight: 900;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.12);
+}
+.stage-cell .stage-star {
+  font-size: 15px;
+  line-height: 1;
+  color: #c9bfa8;
+}
+.stage-cell.starred {
+  background: #fff2c2;
+  color: var(--orange-dark);
+}
+.stage-cell.starred .stage-star {
+  color: #f5b301;
+}
+.stage-cell:active {
+  transform: translateY(1px);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.12);
+}
+
 .share-code {
   font-size: 34px;
   font-weight: 900;
