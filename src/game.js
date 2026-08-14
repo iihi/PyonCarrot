@@ -20,10 +20,11 @@ import { uiSkinUrl } from './uiSkin.js';
 const SAVE_KEY = 'pyoncarrot_save_v1';
 
 // ---------- スコアの定数（調整はここ） ----------
-const SCORE_PER_CARROT = 10; // 残ニンジン1本あたりのスコア
+const SCORE_PER_CARROT = 10; // 取ったニンジン1本あたりのスコア
 const PERFECT_BONUS = 300; // 全マス回収クリア(じっくり派)
-const SPEED_BONUS = 300; // 最短手数+1以内クリア(駆け抜け派)
-const retryMult = (r) => (r === 0 ? 1.5 : r >= 3 ? 0.5 : 1.0); // リトライ倍率
+const SPEED_BONUS = 500; // 最短手数+1以内クリア(駆け抜け派)
+// リトライ増減(固定加算): ノーリトライ=+100 / 1〜2回=±0 / 3回以上=-100
+const retryBonus = (r) => (r === 0 ? 100 : r >= 3 ? -100 : 0);
 
 // 季節の導入説明(季節の頭で1枚はさむ)
 const SEASON_INTRO = {
@@ -1074,12 +1075,12 @@ export class Game {
     this.scene.celebrate();
     this.sfx.clear();
 
-    // スコア計算: (残ニンジン×10 + パーフェクト + スピード) × リトライ倍率
+    // スコア計算: 取ったニンジン×10 + パーフェクト + スピード + リトライ増減(全て加算)
     const carrotBonus = this.carrots * SCORE_PER_CARROT;
     const perfect = this.level.tiles.every((t) => t.whirl || t.eaten) ? PERFECT_BONUS : 0;
     const speed = this.moves <= this.level.minMoves + 1 ? SPEED_BONUS : 0;
-    const mult = retryMult(this.retryCount);
-    const gain = Math.round((carrotBonus + perfect + speed) * mult);
+    const retry = retryBonus(this.retryCount);
+    const gain = carrotBonus + perfect + speed + retry;
     this.score += gain;
     this._lastGain = gain; // クリアDLGの「もういちど」で取り消せるように覚えておく
     // ハイスコアの確定は「つぎのステージへ」を押した時点(やり直しで巻き戻せるため)
@@ -1093,7 +1094,7 @@ export class Game {
     setTimeout(() => {
       if (this.state !== 'clear') return;
       this._show('modal-clear');
-      this._playClearSequence({ carrotBonus, perfect, speed, mult, gain });
+      this._playClearSequence({ carrotBonus, perfect, speed, retry, gain });
     }, 1500);
   }
 
@@ -1114,7 +1115,7 @@ export class Game {
     // 出ない行は非表示、出る行は「待機」状態に
     rows.perfect.classList.toggle('hidden', !d.perfect);
     rows.speed.classList.toggle('hidden', !d.speed);
-    rows.mult.classList.toggle('hidden', d.mult === 1);
+    rows.mult.classList.toggle('hidden', d.retry === 0);
     // コードプレイは累計スコアの概念が無いので「ごうけい」行は隠す
     rows.cum.classList.toggle('hidden', this.codeMode);
     for (const r of Object.values(rows)) {
@@ -1127,12 +1128,12 @@ export class Game {
     $('sb-carrots').textContent = '+0';
     $('sb-perfect').textContent = `+${fmt(PERFECT_BONUS)}`;
     $('sb-speed').textContent = `+${fmt(SPEED_BONUS)}`;
-    if (d.mult !== 1) {
+    if (d.retry !== 0) {
       $('sb-mult-label').textContent =
-        d.mult > 1 ? 'ノーリトライボーナス' : `リトライ${this.retryCount}回`;
-      $('sb-mult').textContent = `×${d.mult}`;
+        d.retry > 0 ? 'ノーリトライボーナス' : `リトライ${this.retryCount}回`;
+      $('sb-mult').textContent = (d.retry > 0 ? '+' : '') + fmt(d.retry);
     }
-    $('sb-total').textContent = `+${fmt(d.gain)}`;
+    $('sb-total').textContent = (d.gain >= 0 ? '+' : '') + fmt(d.gain);
     $('sb-cum').textContent = fmt(this.score);
 
     const pop = (row) => {
@@ -1155,7 +1156,7 @@ export class Game {
       later(t, () => pop(rows.speed));
       t += 380;
     }
-    if (d.mult !== 1) {
+    if (d.retry !== 0) {
       later(t, () => pop(rows.mult));
       t += 380;
     }
