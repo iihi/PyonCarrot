@@ -251,9 +251,71 @@ export function makeSpring() {
   return { group: g, topY: baseY + h + 0.04 };
 }
 
+// 車体(トロッコ/ソリ)の最下点を載せる高さ。台座(mound)上面(≈0.19)付近。
+const VEHICLE_SIT_Y = 0.17;
+
+// トロッコの車輪ノードを推定する。命名規約 wheel_0..3 があれば最優先。
+// 無ければ「メッシュを含む子が最も多いノード」を本体コンテナとみなし、
+// その子のうち体積最大を本体、残り4つを四隅の車輪とする。車輪ノードは
+// rideCart で rotation.x を回して転がして見せる(このglbは axle=ローカルX)。
+function findWheels(glb) {
+  const named = [];
+  glb.traverse((o) => { if (/wheel/i.test(o.name)) named.push(o); });
+  if (named.length) return named;
+
+  const hasMesh = (o) => { let f = false; o.traverse((x) => { if (x.isMesh) f = true; }); return f; };
+  let container = null, best = -1;
+  glb.traverse((o) => {
+    if (o.isMesh) return;
+    const n = o.children.filter(hasMesh).length;
+    if (n > best) { best = n; container = o; }
+  });
+  if (!container || best < 5) return [];
+  const box = new THREE.Box3();
+  const size = new THREE.Vector3();
+  const kids = container.children.filter(hasMesh).map((ch) => {
+    box.setFromObject(ch).getSize(size);
+    return { ch, vol: size.x * size.y * size.z };
+  }).sort((a, b) => b.vol - a.vol);
+  const wheels = kids.slice(1).map((k) => k.ch); // 体積最大(本体)を除く
+  return wheels.length === 4 ? wheels : [];
+}
+
+// デザイナー提供glb(cart/sled)を消費側の契約に合わせて包む。
+// 返り値: { railGroup(タイルに載る/移動・回転する最上位), cart(本体・中にニンジンを積む),
+//           floorY(ニンジンを置く高さ) }。cart.userData.wheels を rideCart が回して走行感を出す。
+function glbVehicle(glb, withWheels) {
+  // envMap を使っていないので metalness が高いと暗く見える → 0 に落として素の色を出す。
+  for (const m of collectMaterials(glb)) {
+    if (m && m.metalness !== undefined) { m.metalness = 0; m.needsUpdate = true; }
+  }
+  const railGroup = new THREE.Group();
+  const cart = new THREE.Group();
+  cart.add(glb);
+  railGroup.add(cart);
+
+  // 車輪ノードを集める(トロッコのみ)。命名規約 wheel_0..3 を優先し、
+  // 無ければ形状から推定する(今回のglbは wheel の命名が無い)。
+  cart.userData.wheels = withWheels ? findWheels(glb) : [];
+
+  // 車体を持ち上げて、最下点(車輪の底)が台座(mound)の上面あたりに載るようにする。
+  // 台座にめり込まないよう VEHICLE_SIT_Y に合わせる。持ち上げは cart 内の glb に適用
+  // (railGroup は乗車アニメで y をリセットされるため、ここでズラすと走行中に落ちる)。
+  const box = new THREE.Box3().setFromObject(glb);
+  const bottom = Number.isFinite(box.min.y) ? box.min.y : 0;
+  const liftY = VEHICLE_SIT_Y - bottom;
+  glb.position.y += liftY;
+
+  // ニンジンを積む床の高さ: 持ち上げ後のバウンディングボックスから内側の床を推定。
+  const floorY = bottom + liftY + (box.max.y - box.min.y) * 0.42;
+  return { railGroup, cart, floorY };
+}
+
 // 作業用トロッコ(青メタルの木箱+スポーク車輪)。{ railGroup, cart, floorY } を返す。
 // cart.userData.wheels を回転させて走行感を出す。向きは乗車時にrideCartで回す。
 export function makeCart() {
+  const glb = loadedModel('cart');
+  if (glb) return glbVehicle(glb, true);
   const railGroup = new THREE.Group();
   const cart = new THREE.Group();
   // 畑(茶)にも草(緑)にも埋もれない青系メタル
@@ -321,6 +383,8 @@ export function makeCart() {
 
 // 冬のソリ(機能はトロッコと同じ)。赤い反り上がった刃+木のデッキ。
 export function makeSled() {
+  const glb = loadedModel('sled');
+  if (glb) return glbVehicle(glb, false); // ソリは車輪なし
   const railGroup = new THREE.Group();
   const cart = new THREE.Group();
   const wood = mat(0xba7b3e, { roughness: 0.7 });
