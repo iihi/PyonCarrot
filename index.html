@@ -69,7 +69,11 @@
         <h2>ステージえらび</h2>
         <p class="modal-text small" id="stages-progress">達成率 0%（★0/0）</p>
         <p class="modal-text tiny code-note">全ニンジンを とると <b>★</b> がつくよ。（スコアは かわりません）</p>
+        <div class="stages-filter-row">
+          <button id="stages-filter" class="stages-filter-btn">未達成だけ表示</button>
+        </div>
         <div id="stages-grid" class="stages-grid"></div>
+        <p class="modal-text small stages-empty hidden" id="stages-empty">ぜんぶ達成！おめでとう🎉</p>
         <button id="stages-close" class="big-btn sub">とじる</button>
       </div>
     </div>
@@ -78,7 +82,7 @@
     <div id="modal-newgame" class="modal hidden">
       <div class="modal-box">
         <h2>はじめから</h2>
-        <p class="modal-text" id="newgame-info">「つづきから」のデータが消えます。<br>よろしいですか？</p>
+        <p class="modal-text" id="newgame-info">「つづきから」のデータと<br><b>達成率（★あつめ）</b>が消えます。<br>よろしいですか？</p>
         <button id="btn-newgame-yes" class="big-btn primary">はじめる（データを消す）</button>
         <button id="btn-newgame-no" class="big-btn sub">やめる</button>
       </div>

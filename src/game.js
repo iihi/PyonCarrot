@@ -52,6 +52,7 @@ export class Game {
     this.retryCount = 0; // このステージのリトライ回数(倍率用)
     this.codeMode = false; // コード入力プレイ(ワンショット。セーブ・ハイスコアに影響させない)
     this.replayFromSelect = false; // ステージえらびからの再挑戦中(クリア後は一覧へ戻る)
+    this._stagesUnstarredOnly = false; // ステージえらび: 未達成(★無し)だけ表示
 
     this.scene.onTileTap = (id) => this.tryMove(id);
     this._bindUI();
@@ -241,6 +242,11 @@ export class Game {
     $('stages-close').onclick = () => {
       this.sfx.click();
       this._hide('modal-stages');
+    };
+    $('stages-filter').onclick = () => {
+      this.sfx.click();
+      this._stagesUnstarredOnly = !this._stagesUnstarredOnly;
+      this._openStages(); // 同じ画面を再描画(フィルタ反映)
     };
     $('btn-help').onclick = () => {
       this.sfx.click();
@@ -520,20 +526,34 @@ export class Game {
   }
 
   // ステージえらび画面を開く: クリア済みステージ(1..cleared)を★付きで並べる。
+  // 「未達成だけ表示」フィルタで★の付いていないステージだけに絞れる。
   _openStages() {
     const cat = this._loadStars();
     const cleared = cat ? cat.cleared : 0;
     const stars = new Set(cat ? cat.stars : []);
+    const onlyUnstarred = this._stagesUnstarredOnly;
+
     if (cleared > 0) {
       const rate = Math.round((stars.size / cleared) * 100);
       $('stages-progress').textContent = `達成率 ${rate}%（★${stars.size}/${cleared}）`;
     } else {
       $('stages-progress').textContent = 'まだクリアしたステージがありません';
     }
+
+    // フィルタボタン: クリア済みが無ければ隠す。状態を見た目に反映。
+    const fbtn = $('stages-filter');
+    fbtn.classList.toggle('hidden', cleared === 0);
+    fbtn.classList.toggle('active', onlyUnstarred);
+    fbtn.textContent = onlyUnstarred ? 'すべて表示' : '未達成だけ表示';
+
+    // 大量ステージ(1000超など)でも一括追加できるよう DocumentFragment を使う。
     const grid = $('stages-grid');
     grid.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    let shown = 0;
     for (let n = 1; n <= cleared; n++) {
       const got = stars.has(n);
+      if (onlyUnstarred && got) continue;
       const cell = document.createElement('button');
       cell.className = 'stage-cell' + (got ? ' starred' : '');
       cell.innerHTML =
@@ -542,8 +562,20 @@ export class Game {
         this.sfx.click();
         this._playStage(n);
       };
-      grid.appendChild(cell);
+      frag.appendChild(cell);
+      shown++;
     }
+    grid.appendChild(frag);
+
+    // 空表示: 「未達成だけ」で全★なら達成メッセージ、通常はグリッド非表示のみ。
+    const empty = $('stages-empty');
+    if (cleared > 0 && shown === 0 && onlyUnstarred) {
+      empty.textContent = 'ぜんぶ達成！おめでとう🎉';
+      empty.classList.remove('hidden');
+    } else {
+      empty.classList.add('hidden');
+    }
+
     this._show('modal-stages');
   }
 
