@@ -734,6 +734,14 @@ export function makeGoal() {
   if (glbGoal) {
     const g = new THREE.Group();
     hideGlbGoalRabbit(glbGoal); // glb同梱の静止ゴール兎だけ隠す(祠・旗は残す)
+    // 台などが metalness(金属)設定だと、環境マップを使わない本ゲームでは反射先が無く
+    // 暗く沈む。メタリックを0にして素の色がそのまま出るようにする(モデルの見た目に近づく)。
+    for (const m of collectMaterials(glbGoal)) {
+      if (m && m.metalness !== undefined) {
+        m.metalness = 0;
+        m.needsUpdate = true;
+      }
+    }
     g.add(glbGoal); // 祠(台座+花+旗など)の見た目
     // glbの旗ノード("flag")を揺らせるように参照を持たせる(元の向きを基準に揺らす)
     let flagNode = null;
