@@ -219,6 +219,10 @@ export class Game {
         this.hiscore = this.score;
         this._saveSettings();
       }
+      // ★カタログが無い/別シードなら、続きのシード用に用意(旧セーブ救済)。
+      // 到達済みは stage-1 とみなす(過去の★履歴は不明なので空から)。
+      const cat = this._loadStars();
+      if (!cat || cat.seed !== this.seed) this._resetStars(this.stage - 1);
       this.retryCount = 0;
       this._lastIntroKey = null;
       this.startStage();
@@ -459,6 +463,16 @@ export class Game {
     } else {
       hi.classList.add('hidden');
     }
+    // 達成率(★コレクション): 到達ステージ数を分母に、全回収した★の割合
+    const prog = $('title-progress');
+    const cat = this._loadStars();
+    if (cat && cat.cleared > 0) {
+      const rate = Math.round((cat.stars.length / cat.cleared) * 100);
+      prog.textContent = `達成率 ${rate}%（★${cat.stars.length}/${cat.cleared}）`;
+      prog.classList.remove('hidden');
+    } else {
+      prog.classList.add('hidden');
+    }
   }
 
   _openCodeInput() {
@@ -624,6 +638,7 @@ export class Game {
     this.score = 0;
     this.retryCount = 0;
     this._lastIntroKey = null;
+    this._resetStars(0); // 案Y: はじめからで★コレクションもリセット
     this.startStage();
   }
 
@@ -1081,6 +1096,8 @@ export class Game {
     const speed = this.moves <= this.level.minMoves + 1 ? SPEED_BONUS : 0;
     const retry = retryBonus(this.retryCount);
     const gain = carrotBonus + perfect + speed + retry;
+    // ★コレクション: 自分の進行シードなら到達/全回収を記録(perfectで★)
+    this._recordStageResult(!!perfect);
     this.score += gain;
     this._lastGain = gain; // クリアDLGの「もういちど」で取り消せるように覚えておく
     // ハイスコアの確定は「つぎのステージへ」を押した時点(やり直しで巻き戻せるため)
@@ -1289,6 +1306,51 @@ export class Game {
     } catch (e) {
       return null;
     }
+  }
+
+  // ---------- ★コレクション(全ニンジン回収の達成カタログ) ----------
+  // 案Y: 現在の進行シードに紐づく。はじめから/別シードでリセット。
+  // 形式: { seed, cleared(=到達した最大ステージ), stars:[ステージ番号...] }
+  _loadStars() {
+    try {
+      const raw = localStorage.getItem(SAVE_KEY + '_stars');
+      if (!raw) return null;
+      const d = JSON.parse(raw);
+      if (typeof d.seed !== 'number' || !Array.isArray(d.stars)) return null;
+      return { seed: d.seed, cleared: d.cleared || 0, stars: d.stars };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  _saveStars(d) {
+    try {
+      localStorage.setItem(SAVE_KEY + '_stars', JSON.stringify(d));
+    } catch (e) {}
+  }
+
+  // 進行シード用のカタログを用意(無い/別シードなら新規)。cleared は初期到達値。
+  _resetStars(cleared = 0) {
+    const d = { seed: this.seed, cleared: Math.max(0, cleared), stars: [] };
+    this._saveStars(d);
+    return d;
+  }
+
+  // クリア時に呼ぶ: 自分の進行シードのステージだけカタログを更新する。
+  // (別シードの共有コードは対象外) perfect=全ニンジン回収なら★を付与。
+  _recordStageResult(perfect) {
+    const cat = this._loadStars();
+    if (!cat || cat.seed !== this.seed) return;
+    let changed = false;
+    if (this.stage > cat.cleared) {
+      cat.cleared = this.stage;
+      changed = true;
+    }
+    if (perfect && !cat.stars.includes(this.stage)) {
+      cat.stars.push(this.stage);
+      changed = true;
+    }
+    if (changed) this._saveStars(cat);
   }
 
   _saveSettings() {

@@ -355,6 +355,17 @@ html.skin-icon-sound #btn-sound:not(.on)::after {
   display: inline-block;
 }
 
+.title-progress {
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--brown);
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 999px;
+  padding: 4px 14px;
+  display: inline-block;
+}
+
 .share-code {
   font-size: 34px;
   font-weight: 900;
