@@ -411,17 +411,6 @@ img {
   user-select: none;
 }
 
-.logo-sub {
-  margin-top: 14px;
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--brown);
-  background: rgba(255, 255, 255, 0.85);
-  border-radius: 999px;
-  padding: 6px 16px;
-  display: inline-block;
-}
-
 .title-buttons {
   display: flex;
   flex-direction: column;
