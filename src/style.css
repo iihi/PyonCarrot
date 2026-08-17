@@ -370,6 +370,14 @@ html.skin-icon-sound #btn-sound:not(.on)::after {
 .stages-box {
   max-width: 92vw;
 }
+/* ボックス自身はスクロールさせない。見出し/フィルタ/とじるは固定し、
+   グリッドだけが残りの高さを埋めて内部スクロールする(境界でのガタつき防止)。 */
+.modal-box.stages-box {
+  overflow: hidden;
+}
+.stages-box > :not(.stages-grid) {
+  flex-shrink: 0;
+}
 .stages-filter-row {
   display: flex;
   justify-content: center;
@@ -398,7 +406,8 @@ html.skin-icon-sound #btn-sound:not(.on)::after {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 6px;
-  max-height: 46vh;
+  flex: 1 1 auto;
+  min-height: 0; /* flex子が縮んで内部スクロールできるように(はみ出し防止) */
   overflow-y: auto;
   padding: 6px 4px;
   margin: 8px 0 12px;
@@ -663,7 +672,7 @@ img {
 .modal-box {
   /* パネル枠の差し替え画像(assets/ui/panel.png)があれば重ねる。無ければ従来のクリーム地 */
   background: var(--skin-panel, none) center / 100% 100% no-repeat, var(--cream);
-  border: 4px solid var(--green-dark);
+  border: 4px solid var(--dialog-frame, var(--green-dark));
   border-radius: 22px;
   padding: 24px 20px;
   width: min(100%, 360px);
@@ -692,10 +701,11 @@ img {
   box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.12);
 }
 
-/* クリアだけは祝祭感でオレンジ帯 */
-.clear-title {
-  color: #fff !important;
+/* クリアだけは祝祭感でオレンジ。見出し帯も枠もオレンジで揃える
+   (変数は modal-box 側=.clear-panel に置く。子のh2からは親の枠に伝播しないため) */
+.clear-panel {
   --dialog-head: var(--orange);
+  --dialog-frame: var(--orange-dark);
 }
 
 .modal-text {
