@@ -992,41 +992,22 @@ img {
   color: var(--orange-dark);
 }
 
-#btn-tut-next {
-  font: inherit;
+/* チュートリアルの2ボタンは .big-btn の配色(パレット)をそのまま使い、
+   小さいパネルに収まるようサイズだけ詰める。
+   つぎへ=primary(オレンジ) / スキップ=sub(クリーム色。タイトルへ・ホームと同じ) */
+#tut-panel .big-btn.slim {
+  border-radius: 999px;
   font-size: 14px;
-  font-weight: 700;
-  padding: 8px 30px;
-  border: none;
-  border-bottom: 3px solid #3f7d34;
-  border-radius: 999px;
-  background: linear-gradient(#7ec95c, #5aa843);
-  color: #fff;
-  cursor: pointer;
+  padding: 9px 26px;
+  box-shadow: 0 4px 0 color-mix(in srgb, var(--tb) 70%, #000);
 }
-
-#btn-tut-next:active {
-  transform: translateY(1px);
+#tut-panel .big-btn.slim:active {
+  transform: translateY(4px);
+  box-shadow: none;
 }
-
-#btn-tut-next.hidden {
-  display: none;
-}
-
 #btn-tut-skip {
-  font: inherit;
   font-size: 12px;
-  font-weight: 700;
-  padding: 6px 18px;
-  border: none;
-  border-radius: 999px;
-  background: #9db4c0;
-  color: #fff;
-  cursor: pointer;
-}
-
-#btn-tut-skip:active {
-  transform: translateY(1px);
+  padding: 7px 20px;
 }
 
 /* ---------- 段差チュートリアル吹き出し ---------- */
