@@ -21,6 +21,15 @@
   --btn-sub-top: #b492e0;
   --btn-sub: #9068cf;
   --btn-sub-dark: #6f49ac;
+
+  /* デザイン指定パレット(ボタン共通)。地色だけ指定すれば、明るい上側と
+     暗い影は color-mix で作る(下の .big-btn / .hud-btn を参照)。 */
+  --pal-blue: #08b3f9;
+  --pal-orange: #f97608;
+  --pal-purple: #a16acd;
+  --pal-cream: #f0e3c9;
+  --pal-brown: #642e02; /* クリーム色ボタンの文字色 */
+  --pal-gray: #9db4c0; /* サウンドOFF */
 }
 
 html,
@@ -121,9 +130,11 @@ textarea {
   font-weight: 800;
   font-family: inherit;
   color: #fff;
-  background: linear-gradient(#6cc95f, var(--green));
+  /* 地色 --hb からグラデと影を生成(.big-btn と同じ考え方)。既定はオレンジ。 */
+  --hb: var(--pal-orange);
+  background: linear-gradient(color-mix(in srgb, var(--hb) 84%, #fff), var(--hb));
   /* 立体感は box-shadow で(border だと押下時に高さが変わり周囲がずれる) */
-  box-shadow: 0 4px 0 var(--green-dark);
+  box-shadow: 0 4px 0 color-mix(in srgb, var(--hb) 70%, #000);
   cursor: pointer;
   user-select: none;
 }
@@ -133,8 +144,7 @@ textarea {
 }
 
 .item-btn {
-  background: linear-gradient(#ffab55, var(--orange));
-  box-shadow: 0 4px 0 var(--orange-dark);
+  --hb: var(--pal-orange);
 }
 
 .item-btn .icon {
@@ -160,14 +170,18 @@ textarea {
   padding: 8px 0;
   width: 38px;
   font-size: 13px;
-  background: linear-gradient(#9db4c0, #7e97a5);
-  box-shadow: 0 4px 0 #5f7482;
+  --hb: var(--pal-gray); /* OFF/無効はグレー */
   opacity: 0.92;
 }
 
 .hud-btn.mini.on {
-  background: linear-gradient(#6cc95f, var(--green));
-  box-shadow: 0 4px 0 var(--green-dark);
+  --hb: var(--pal-blue); /* サウンドON は水色 */
+  opacity: 1;
+}
+
+#btn-home {
+  --hb: var(--pal-orange);
+  opacity: 1;
 }
 
 /* サウンドOFF: 音符(♪)に斜めの取り消し線を重ねる */
@@ -192,22 +206,24 @@ textarea {
    サウンドはオン/オフで別画像。無指定なら従来の絵文字チップのまま。 */
 html.skin-icon-sound #btn-sound,
 html.skin-icon-home #btn-home {
-  color: transparent;
-  background-color: transparent;
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: 76%;
-  box-shadow: none;
+  color: transparent; /* 絵文字は隠し、画像アイコンだけ見せる */
+  /* アイコン画像をチップの地色グラデに重ねる(2層) */
+  background-repeat: no-repeat, no-repeat;
+  background-position: center, center;
+  background-size: 76%, 100% 100%;
   opacity: 1;
 }
 html.skin-icon-sound #btn-sound {
-  background-image: var(--skin-icon-sound-off);
+  background-image: var(--skin-icon-sound-off),
+    linear-gradient(color-mix(in srgb, var(--hb) 84%, #fff), var(--hb));
 }
 html.skin-icon-sound #btn-sound.on {
-  background-image: var(--skin-icon-sound-on);
+  background-image: var(--skin-icon-sound-on),
+    linear-gradient(color-mix(in srgb, var(--hb) 84%, #fff), var(--hb));
 }
 html.skin-icon-home #btn-home {
-  background-image: var(--skin-icon-home);
+  background-image: var(--skin-icon-home),
+    linear-gradient(color-mix(in srgb, var(--hb) 84%, #fff), var(--hb));
 }
 /* 差し替え時は既定の取り消し線を消す(OFF画像側で表現) */
 html.skin-icon-sound #btn-sound:not(.on)::after {
@@ -217,8 +233,7 @@ html.skin-icon-sound #btn-sound:not(.on)::after {
 .hud-btn.mini.wide {
   width: auto;
   padding: 8px 12px;
-  background: linear-gradient(#ffab55, var(--orange));
-  box-shadow: 0 4px 0 var(--orange-dark);
+  --hb: var(--pal-orange);
   opacity: 1;
 }
 
@@ -577,22 +592,24 @@ img {
   font-size: 17px;
   font-weight: 800;
   font-family: inherit;
-  color: #fff;
-  background: linear-gradient(var(--btn-top), var(--btn));
+  /* 地色 --tb からグラデと影を生成。役割ごとに --tb を差し替えるだけで色が変わる。
+     通常=水色 / primary(主アクション)=オレンジ / sub(とじる・やめる系)=クリーム色。 */
+  --tb: var(--pal-blue);
+  color: var(--tb-text, #fff);
+  background: linear-gradient(color-mix(in srgb, var(--tb) 84%, #fff), var(--tb));
   /* 立体感は box-shadow で描く(border だと押下時に高さが変わり周囲がずれるため) */
-  box-shadow: 0 5px 0 var(--btn-dark);
+  box-shadow: 0 5px 0 color-mix(in srgb, var(--tb) 70%, #000);
   cursor: pointer;
   width: 100%;
 }
 
 .big-btn.primary {
-  background: linear-gradient(#ffab55, var(--orange));
-  box-shadow: 0 5px 0 var(--orange-dark);
+  --tb: var(--pal-orange);
 }
 
 .big-btn.sub {
-  background: linear-gradient(var(--btn-sub-top), var(--btn-sub));
-  box-shadow: 0 5px 0 var(--btn-sub-dark);
+  --tb: var(--pal-cream);
+  --tb-text: var(--pal-brown);
 }
 
 .big-btn.slim {
@@ -657,23 +674,13 @@ img {
   box-shadow: 0 5px 0 #9a9a9a;
 }
 
-/* タイトル画面のボタン色(デザイン指定パレット)。
-   .big-btn の primary/sub より詳細度を高くして、ここだけ色を差し替える
-   (他ダイアログのボタンは従来のまま)。無効時(:disabled)は除外してグレーを残す。
-   地色 --tb から明るい上側と暗い影を color-mix で作り、従来の立体感に合わせる。 */
-.title-buttons .big-btn:not(:disabled) {
-  background: linear-gradient(color-mix(in srgb, var(--tb) 84%, #fff), var(--tb));
-  box-shadow: 0 5px 0 color-mix(in srgb, var(--tb) 70%, #000);
-  color: var(--tb-text, #fff);
-}
-.title-buttons .big-btn:not(:disabled):active {
-  box-shadow: none; /* 押下は従来どおり沈む(上の影指定を打ち消す) */
-}
-#btn-start { --tb: #08b3f9; } /* 水色 */
-#btn-continue { --tb: #f97608; } /* オレンジ */
-#btn-stages { --tb: #a16acd; } /* 紫 */
-#btn-code { --tb: #f0e3c9; --tb-text: #642e02; } /* クリーム色+茶文字 */
-#btn-help { --tb: #f0e3c9; --tb-text: #642e02; }
+/* タイトル画面のボタンは役割ではなく画面ごとの指定色。id で地色だけ差し替える
+   (id はクラスより強いので、.big-btn.primary などの既定色を上書きできる)。 */
+#btn-start { --tb: var(--pal-blue); }
+#btn-continue { --tb: var(--pal-orange); }
+#btn-stages { --tb: var(--pal-purple); }
+#btn-code { --tb: var(--pal-cream); --tb-text: var(--pal-brown); }
+#btn-help { --tb: var(--pal-cream); --tb-text: var(--pal-brown); }
 
 /* ---------- モーダル ---------- */
 .modal {
