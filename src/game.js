@@ -723,7 +723,12 @@ export class Game {
     }
     this.state = 'busy';
     this._tutDoneFromTitle = fromTitle;
-    $('btn-tut-done').textContent = fromTitle ? 'タイトルへもどる' : 'さっそくあそぶ！';
+    // ラベルで役割が変わるので色も合わせる。
+    // 「タイトルへもどる」= 離脱なのでクリーム色 / 「さっそくあそぶ！」= 主アクションでオレンジ
+    const done = $('btn-tut-done');
+    done.textContent = fromTitle ? 'タイトルへもどる' : 'さっそくあそぶ！';
+    done.classList.toggle('sub', fromTitle);
+    done.classList.toggle('primary', !fromTitle);
     this._show('modal-tut-done');
   }
 
