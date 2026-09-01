@@ -1,1 +1,8 @@
-{}
+{ "iconSoundOn": "Icon_Soundon.png",
+ "iconSoundOff": "Icon_Soundoff.png",
+ "iconHome": "Icon_Home.png",
+ "seasonSpring": "Icon_Spring.png",
+ "seasonSummer": "Icon_Summer.png",
+ "seasonAutumn": "Icon_Autumn.png",
+ "seasonWinter": "Icon_Winter.png" 
+}

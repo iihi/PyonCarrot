@@ -13,9 +13,9 @@ import * as THREE from 'three';
 
 // 差し替え可能な画像キー → png ファイル名
 export const TEXTURE_FILES = {
-  number1: 'number-1.png', // 数字バッジ 1（原作準拠で青）
-  number2: 'number-2.png', // 数字バッジ 2（ピンク）
-  number3: 'number-3.png', // 数字バッジ 3（赤）
+  number1: 'number-1.png', // 数字バッジ 1（コード生成は水色 #08b3f9）
+  number2: 'number-2.png', // 数字バッジ 2（コード生成はピンク #fb6b8a）
+  number3: 'number-3.png', // 数字バッジ 3（コード生成は紫 #a16acd）
   leaf: 'leaf.png', // 落ち葉マス(つむじ風の対)のテクスチャ
 };
 

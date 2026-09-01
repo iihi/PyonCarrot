@@ -1085,8 +1085,8 @@ function mulberryLocal(a) {
   };
 }
 
-// ---------- 数字バッジ（原作準拠の色分け: 1=青 2=ピンク 3=赤） ----------
-const NUMBER_COLORS = { 1: '#3b6fe0', 2: '#e858b8', 3: '#e8483b' };
+// ---------- 数字バッジ（デザイン指定の色分け: 1=水色 2=ピンク 3=紫） ----------
+const NUMBER_COLORS = { 1: '#08b3f9', 2: '#fb6b8a', 3: '#a16acd' };
 
 // 数字バッジの絵柄を Canvas に描いて返す(書き出しツールと共用の単一ソース)。
 export function drawNumberCanvas(value) {
@@ -1100,7 +1100,7 @@ export function drawNumberCanvas(value) {
   ctx.lineJoin = 'round';
   ctx.strokeStyle = '#ffffff';
   ctx.strokeText(String(value), 64, 70);
-  ctx.fillStyle = NUMBER_COLORS[value] || '#3b6fe0';
+  ctx.fillStyle = NUMBER_COLORS[value] || NUMBER_COLORS[1];
   ctx.fillText(String(value), 64, 70);
   return canvas;
 }

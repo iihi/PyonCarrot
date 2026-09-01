@@ -28,12 +28,15 @@ const retryBonus = (r) => (r === 0 ? 100 : r >= 3 ? -100 : 0);
 
 // 季節の導入説明(季節の頭で1枚はさむ)
 const SEASON_INTRO = {
-  spring: { emoji: '🌸', name: '春', color: '#ff9ec7', text: 'まずは基本！<br>ニンジンを集めて、ゴールでまつ<b>ピンクのウサギ</b>をめざそう。' },
-  summer: { emoji: '☀️', name: '夏', color: '#2fb2e0', text: '<b>ジャンプ台</b>とうじょう！<br>のって飛ぶと<b>2マス遠く</b>までとべるよ。' },
-  autumn: { emoji: '🍂', name: '秋', color: '#e0842f', text: '<b>つむじ風</b>があらわれた！<br>のると対(つい)の<b>落ち葉マス</b>まで<br>ビュ〜ンと運ばれるよ。' },
-  winter: { emoji: '❄️', name: '冬', color: '#4aa3d6', text: '<b>ソリ</b>にのって、進んだ方向へすべって、<br>かべ(段差や畑)の手前で止まる。<br>止まった所から<b>数字ぶん</b>ジャンプ！' },
-  allin: { emoji: '🎊', name: 'オールシーズン', color: '#7c5cff', text: 'ここからは<b>ぜんぶ</b>でてくる！' },
+  spring: { emoji: '🌸', name: '春', color: '#fb6b8a', text: 'まずは基本！<br>ニンジンを集めて、ゴールでまつ<b>ピンクのウサギ</b>をめざそう。' },
+  summer: { emoji: '☀️', name: '夏', color: '#08b3f9', text: '<b>ジャンプ台</b>とうじょう！<br>のって飛ぶと<b>2マス遠く</b>までとべるよ。' },
+  autumn: { emoji: '🍂', name: '秋', color: '#f97608', text: '<b>つむじ風</b>があらわれた！<br>のると対(つい)の<b>落ち葉マス</b>まで<br>ビュ〜ンと運ばれるよ。' },
+  winter: { emoji: '❄️', name: '冬', color: '#648bbc', text: '<b>ソリ</b>にのって、進んだ方向へすべって、<br>かべ(段差や畑)の手前で止まる。<br>止まった所から<b>数字ぶん</b>ジャンプ！' },
+  allin: { emoji: '🎊', name: 'オールシーズン', color: '#a16acd', text: 'ここからは<b>ぜんぶ</b>でてくる！' },
 };
+
+// オールシーズンで並べる季節アイコン(assets/ui の manifest キー。春→夏→秋→冬)
+const SEASON_ICON_KEYS = ['seasonSpring', 'seasonSummer', 'seasonAutumn', 'seasonWinter'];
 
 const $ = (id) => document.getElementById(id);
 const fmt = (n) => n.toLocaleString('ja-JP');
@@ -795,17 +798,31 @@ export class Game {
 
   _showSeasonIntro(key) {
     const info = SEASON_INTRO[key];
-    // 上部アイコン: 差し替え画像(assets/ui/season*.png)があれば画像、無ければ絵文字
+    // 上部アイコン: 差し替え画像(assets/ui/season*.png)があれば画像、無ければ絵文字。
+    // オールシーズンは専用画像(seasonAllin)が無ければ、春夏秋冬の4枚を並べて表示する。
     const iconEl = $('season-emoji');
     const skinKey = 'season' + key.charAt(0).toUpperCase() + key.slice(1);
     const url = uiSkinUrl(skinKey);
+    iconEl.textContent = '';
+    iconEl.innerHTML = '';
+    iconEl.style.backgroundImage = '';
+    iconEl.classList.remove('has-img', 'has-imgs');
+    const allinUrls =
+      key === 'allin' && !url
+        ? SEASON_ICON_KEYS.map((k) => uiSkinUrl(k)).filter(Boolean)
+        : [];
     if (url) {
-      iconEl.textContent = '';
       iconEl.style.backgroundImage = `url("${url}")`;
       iconEl.classList.add('has-img');
+    } else if (allinUrls.length === SEASON_ICON_KEYS.length) {
+      // 春→夏→秋→冬の順に横並び
+      iconEl.classList.add('has-imgs');
+      for (const u of allinUrls) {
+        const sp = document.createElement('span');
+        sp.style.backgroundImage = `url("${u}")`;
+        iconEl.appendChild(sp);
+      }
     } else {
-      iconEl.style.backgroundImage = '';
-      iconEl.classList.remove('has-img');
       iconEl.textContent = info.emoji;
     }
     $('season-name').textContent = info.name;

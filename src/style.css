@@ -657,6 +657,24 @@ img {
   box-shadow: 0 5px 0 #9a9a9a;
 }
 
+/* タイトル画面のボタン色(デザイン指定パレット)。
+   .big-btn の primary/sub より詳細度を高くして、ここだけ色を差し替える
+   (他ダイアログのボタンは従来のまま)。無効時(:disabled)は除外してグレーを残す。
+   地色 --tb から明るい上側と暗い影を color-mix で作り、従来の立体感に合わせる。 */
+.title-buttons .big-btn:not(:disabled) {
+  background: linear-gradient(color-mix(in srgb, var(--tb) 84%, #fff), var(--tb));
+  box-shadow: 0 5px 0 color-mix(in srgb, var(--tb) 70%, #000);
+  color: var(--tb-text, #fff);
+}
+.title-buttons .big-btn:not(:disabled):active {
+  box-shadow: none; /* 押下は従来どおり沈む(上の影指定を打ち消す) */
+}
+#btn-start { --tb: #08b3f9; } /* 水色 */
+#btn-continue { --tb: #f97608; } /* オレンジ */
+#btn-stages { --tb: #a16acd; } /* 紫 */
+#btn-code { --tb: #f0e3c9; --tb-text: #642e02; } /* クリーム色+茶文字 */
+#btn-help { --tb: #f0e3c9; --tb-text: #642e02; }
+
 /* ---------- モーダル ---------- */
 .modal {
   position: absolute;
@@ -753,6 +771,22 @@ img {
   width: 76px;
   height: 76px;
   margin: 0 auto;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+}
+/* オールシーズン: 春夏秋冬の4アイコンを横一列に並べる */
+.season-emoji.has-imgs {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  height: 76px;
+}
+.season-emoji.has-imgs span {
+  flex: 0 0 auto;
+  width: 60px;
+  height: 60px;
   background-repeat: no-repeat;
   background-position: center;
   background-size: contain;
