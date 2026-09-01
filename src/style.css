@@ -227,12 +227,11 @@ html.skin-icon-sound #btn-sound:not(.on)::after {
   display: none;
 }
 
+/* 「コード」ボタン。色は .mini(クリーム色)のまま揃える
+   (タイトルの「コード入力」・クリアの「コード」と同じ見た目にするため) */
 .hud-btn.mini.wide {
   width: auto;
   padding: 8px 12px;
-  --hb: var(--pal-orange);
-  --hb-text: #fff; /* .mini のクリーム用(茶)を打ち消す */
-  opacity: 1;
 }
 
 /* 押下: 影のぶんだけ沈める(variant の box-shadow より後・同等以上の詳細度で確実に上書き) */
