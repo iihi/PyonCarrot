@@ -28,8 +28,7 @@
   --pal-orange: #f97608;
   --pal-purple: #a16acd;
   --pal-cream: #f0e3c9;
-  --pal-brown: #642e02; /* クリーム色ボタンの文字色 */
-  --pal-gray: #9db4c0; /* サウンドOFF */
+  --pal-brown: #642e02; /* クリーム色ボタンの文字色・アイコン色 */
 }
 
 html,
@@ -129,9 +128,10 @@ textarea {
   font-size: 14px;
   font-weight: 800;
   font-family: inherit;
-  color: #fff;
-  /* 地色 --hb からグラデと影を生成(.big-btn と同じ考え方)。既定はオレンジ。 */
+  /* 地色 --hb からグラデと影を生成(.big-btn と同じ考え方)。既定はオレンジ。
+     クリーム色のときは文字/絵文字を茶にする(--hb-text)。 */
   --hb: var(--pal-orange);
+  color: var(--hb-text, #fff);
   background: linear-gradient(color-mix(in srgb, var(--hb) 84%, #fff), var(--hb));
   /* 立体感は box-shadow で(border だと押下時に高さが変わり周囲がずれる) */
   box-shadow: 0 4px 0 color-mix(in srgb, var(--hb) 70%, #000);
@@ -170,18 +170,15 @@ textarea {
   padding: 8px 0;
   width: 38px;
   font-size: 13px;
-  --hb: var(--pal-gray); /* OFF/無効はグレー */
-  opacity: 0.92;
+  /* サウンドOFF・ホームはクリーム色(アイコンが茶色なので対になる) */
+  --hb: var(--pal-cream);
+  --hb-text: var(--pal-brown);
+  opacity: 1;
 }
 
 .hud-btn.mini.on {
-  --hb: var(--pal-blue); /* サウンドON は水色 */
-  opacity: 1;
-}
-
-#btn-home {
-  --hb: var(--pal-orange);
-  opacity: 1;
+  --hb: var(--pal-blue); /* サウンドON は水色(アイコンが白) */
+  --hb-text: #fff;
 }
 
 /* サウンドOFF: 音符(♪)に斜めの取り消し線を重ねる */
@@ -234,6 +231,7 @@ html.skin-icon-sound #btn-sound:not(.on)::after {
   width: auto;
   padding: 8px 12px;
   --hb: var(--pal-orange);
+  --hb-text: #fff; /* .mini のクリーム用(茶)を打ち消す */
   opacity: 1;
 }
 
